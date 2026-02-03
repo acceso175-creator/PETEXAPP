@@ -6,8 +6,8 @@ import { mockPackages, mockProofs } from '@/lib/mock-data';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-let packages = [...mockPackages];
-let proofs = [...mockProofs];
+const packages = [...mockPackages];
+const proofs = [...mockProofs];
 
 export async function getPackages(filters?: {
   status?: string;
