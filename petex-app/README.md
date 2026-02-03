@@ -37,8 +37,9 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 ## Deploy on Netlify
 
-Use these settings in the Netlify UI:
+This repo uses a root `netlify.toml` with `base = "petex-app"`.
+If you configure builds manually in the Netlify UI, use:
 
-- Base directory: `petex-app` (leave blank if the repo root is the app)
+- Base directory: `petex-app`
 - Build command: `npm run build`
 - Publish directory: `.next`
