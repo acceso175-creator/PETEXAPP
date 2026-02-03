@@ -6,7 +6,7 @@ import { mockUsers } from '@/lib/mock-data';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-let users = [...mockUsers];
+const users = [...mockUsers];
 
 export async function getUsers(filters?: {
   role?: string;

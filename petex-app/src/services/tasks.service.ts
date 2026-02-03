@@ -6,7 +6,7 @@ import { mockTaskMessages } from '@/lib/mock-data';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-let messages = [...mockTaskMessages];
+const messages = [...mockTaskMessages];
 
 export async function getMessages(userId: string): Promise<TaskMessage[]> {
   // TODO: Replace with Supabase query

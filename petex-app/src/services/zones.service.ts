@@ -6,7 +6,7 @@ import { mockZones } from '@/lib/mock-data';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-let zones = [...mockZones];
+const zones = [...mockZones];
 
 export async function getZones(): Promise<Zone[]> {
   // TODO: Replace with Supabase query

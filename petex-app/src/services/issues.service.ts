@@ -6,7 +6,7 @@ import { mockIssues } from '@/lib/mock-data';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-let issues = [...mockIssues];
+const issues = [...mockIssues];
 
 export async function getIssues(filters?: {
   status?: string;

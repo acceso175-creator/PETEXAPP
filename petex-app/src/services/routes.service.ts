@@ -7,8 +7,8 @@ import { mockRoutes, mockStops, mockPackages, mockUsers, mockIssues } from '@/li
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // In-memory state for mutations
-let routes = [...mockRoutes];
-let stops = [...mockStops];
+const routes = [...mockRoutes];
+const stops = [...mockStops];
 
 export async function getRoutes(filters?: {
   status?: string;
