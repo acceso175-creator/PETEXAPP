@@ -41,7 +41,7 @@ export async function getDelivery(id: string): Promise<Delivery> {
     throw new Error(`Error fetching delivery ${id}: ${error.message}`);
   }
 
-  return mapDelivery(data as Record<string, unknown>);
+  return mapDelivery(data);
 }
 
 export async function updateDeliveryStatus(
@@ -60,7 +60,7 @@ export async function updateDeliveryStatus(
     throw new Error(`Error updating delivery ${id}: ${error.message}`);
   }
 
-  return mapDelivery(data as Record<string, unknown>);
+  return mapDelivery(data);
 }
 
 const validStatuses: DeliveryStatus[] = ['pendiente', 'entregado', 'fallido'];
@@ -132,7 +132,7 @@ export async function setDeliveryStatus(
     throw new Error(`Error registrando evento de entrega: ${eventError.message}`);
   }
 
-  return mapDelivery(updated as Record<string, unknown>);
+  return mapDelivery(updated);
 }
 
 export async function listDeliveryEvents(deliveryId: string): Promise<DeliveryEvent[]> {
@@ -149,32 +149,36 @@ export async function listDeliveryEvents(deliveryId: string): Promise<DeliveryEv
   return (data ?? []).map(mapDeliveryEvent) as DeliveryEvent[];
 }
 
-function mapDelivery(data: Record<string, unknown>): Delivery {
-  const record = data as Delivery & {
-    failed_reason?: string | null;
-    delivered_at?: string | null;
-    updated_at?: string | null;
-  };
+function mapDelivery(row: any): Delivery {
+  const status = (row?.status ?? 'pendiente') as Delivery['status'];
+  const lat = row?.lat ?? row?.latitude ?? null;
+  const lng = row?.lng ?? row?.longitude ?? null;
 
   return {
-    ...record,
-    failedReason: record.failedReason ?? record.failed_reason ?? null,
-    deliveredAt: record.deliveredAt ?? record.delivered_at ?? null,
-    updatedAt: record.updatedAt ?? record.updated_at ?? null,
+    id: String(row?.id ?? ''),
+    tracking: String(row?.tracking ?? row?.external_ref ?? ''),
+    addressRaw: String(row?.addressRaw ?? row?.address ?? ''),
+    addressNorm: row?.addressNorm ?? row?.address_norm ?? null,
+    lat: typeof lat === 'number' ? lat : lat ? Number(lat) : null,
+    lng: typeof lng === 'number' ? lng : lng ? Number(lng) : null,
+    zoneId: row?.zoneId ?? row?.zone_id ?? null,
+    status,
+    recipientName: row?.recipientName ?? row?.recipient_name ?? null,
+    recipientPhone: row?.recipientPhone ?? row?.recipient_phone ?? row?.phone ?? null,
+    createdAt: row?.createdAt ?? row?.created_at ?? undefined,
+    updatedAt: row?.updatedAt ?? row?.updated_at ?? null,
+    failedReason: row?.failedReason ?? row?.failed_reason ?? null,
+    deliveredAt: row?.deliveredAt ?? row?.delivered_at ?? null,
   };
 }
 
-function mapDeliveryEvent(data: Record<string, unknown>): DeliveryEvent {
-  const record = data as DeliveryEvent & {
-    delivery_id?: string;
-    actor_user_id?: string | null;
-    created_at?: string;
-  };
-
+function mapDeliveryEvent(row: any): DeliveryEvent {
   return {
-    ...record,
-    deliveryId: record.deliveryId ?? record.delivery_id ?? '',
-    actorUserId: record.actorUserId ?? record.actor_user_id ?? null,
-    createdAt: record.createdAt ?? record.created_at ?? new Date().toISOString(),
+    id: String(row?.id ?? ''),
+    deliveryId: String(row?.deliveryId ?? row?.delivery_id ?? ''),
+    actorUserId: row?.actorUserId ?? row?.actor_user_id ?? null,
+    type: String(row?.type ?? ''),
+    payload: (row?.payload ?? {}) as Record<string, unknown>,
+    createdAt: String(row?.createdAt ?? row?.created_at ?? new Date().toISOString()),
   };
 }
