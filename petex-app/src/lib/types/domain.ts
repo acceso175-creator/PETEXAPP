@@ -39,6 +39,8 @@ export interface Delivery {
   recipientPhone?: string | null;
   createdAt?: string;
   updatedAt?: string | null;
+  failedReason?: string | null;
+  deliveredAt?: string | null;
 }
 
 export interface Zone {
@@ -66,4 +68,13 @@ export interface Event {
   routeId?: string | null;
   deliveryId?: string | null;
   metadata?: Record<string, unknown> | null;
+}
+
+export interface DeliveryEvent {
+  id: string;
+  deliveryId: string;
+  actorUserId?: string | null;
+  type: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
 }
