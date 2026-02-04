@@ -149,36 +149,82 @@ export async function listDeliveryEvents(deliveryId: string): Promise<DeliveryEv
   return (data ?? []).map(mapDeliveryEvent) as DeliveryEvent[];
 }
 
-function mapDelivery(row: any): Delivery {
-  const status = (row?.status ?? 'pendiente') as Delivery['status'];
-  const lat = row?.lat ?? row?.latitude ?? null;
-  const lng = row?.lng ?? row?.longitude ?? null;
+type UnknownRecord = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is UnknownRecord =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const getString = (row: UnknownRecord, key: string, fallback = ''): string => {
+  const value = row[key];
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return String(value);
+  }
+  return fallback;
+};
+
+const getNullableString = (row: UnknownRecord, key: string): string | null => {
+  const value = row[key];
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return String(value);
+  }
+  return null;
+};
+
+const getNumber = (row: UnknownRecord, key: string): number | null => {
+  const value = row[key];
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
+};
+
+function mapDelivery(row: unknown): Delivery {
+  const record: UnknownRecord = isRecord(row) ? row : {};
+  const statusValue = getString(record, 'status', 'pendiente') as Delivery['status'];
+  const lat = getNumber(record, 'lat') ?? getNumber(record, 'latitude');
+  const lng = getNumber(record, 'lng') ?? getNumber(record, 'longitude');
 
   return {
-    id: String(row?.id ?? ''),
-    tracking: String(row?.tracking ?? row?.external_ref ?? ''),
-    addressRaw: String(row?.addressRaw ?? row?.address ?? ''),
-    addressNorm: row?.addressNorm ?? row?.address_norm ?? null,
-    lat: typeof lat === 'number' ? lat : lat ? Number(lat) : null,
-    lng: typeof lng === 'number' ? lng : lng ? Number(lng) : null,
-    zoneId: row?.zoneId ?? row?.zone_id ?? null,
-    status,
-    recipientName: row?.recipientName ?? row?.recipient_name ?? null,
-    recipientPhone: row?.recipientPhone ?? row?.recipient_phone ?? row?.phone ?? null,
-    createdAt: row?.createdAt ?? row?.created_at ?? undefined,
-    updatedAt: row?.updatedAt ?? row?.updated_at ?? null,
-    failedReason: row?.failedReason ?? row?.failed_reason ?? null,
-    deliveredAt: row?.deliveredAt ?? row?.delivered_at ?? null,
+    id: getString(record, 'id'),
+    tracking: getString(record, 'tracking', getString(record, 'external_ref')),
+    addressRaw: getString(record, 'addressRaw', getString(record, 'address')),
+    addressNorm: getNullableString(record, 'addressNorm') ?? getNullableString(record, 'address_norm'),
+    lat,
+    lng,
+    zoneId: getNullableString(record, 'zoneId') ?? getNullableString(record, 'zone_id'),
+    status: statusValue,
+    recipientName: getNullableString(record, 'recipientName') ?? getNullableString(record, 'recipient_name'),
+    recipientPhone:
+      getNullableString(record, 'recipientPhone') ??
+      getNullableString(record, 'recipient_phone') ??
+      getNullableString(record, 'phone'),
+    createdAt: getNullableString(record, 'createdAt') ?? getNullableString(record, 'created_at') ?? undefined,
+    updatedAt: getNullableString(record, 'updatedAt') ?? getNullableString(record, 'updated_at'),
+    failedReason: getNullableString(record, 'failedReason') ?? getNullableString(record, 'failed_reason'),
+    deliveredAt: getNullableString(record, 'deliveredAt') ?? getNullableString(record, 'delivered_at'),
   };
 }
 
-function mapDeliveryEvent(row: any): DeliveryEvent {
+function mapDeliveryEvent(row: unknown): DeliveryEvent {
+  const record: UnknownRecord = isRecord(row) ? row : {};
+  const payloadValue = record.payload;
+
   return {
-    id: String(row?.id ?? ''),
-    deliveryId: String(row?.deliveryId ?? row?.delivery_id ?? ''),
-    actorUserId: row?.actorUserId ?? row?.actor_user_id ?? null,
-    type: String(row?.type ?? ''),
-    payload: (row?.payload ?? {}) as Record<string, unknown>,
-    createdAt: String(row?.createdAt ?? row?.created_at ?? new Date().toISOString()),
+    id: getString(record, 'id'),
+    deliveryId: getString(record, 'deliveryId', getString(record, 'delivery_id')),
+    actorUserId: getNullableString(record, 'actorUserId') ?? getNullableString(record, 'actor_user_id'),
+    type: getString(record, 'type'),
+    payload: isRecord(payloadValue) ? payloadValue : {},
+    createdAt: getString(record, 'createdAt', getString(record, 'created_at', new Date().toISOString())),
   };
 }
