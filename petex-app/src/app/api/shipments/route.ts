@@ -43,6 +43,7 @@ const mapShipment = (row: unknown) => {
   return {
     id: getString(record, 'id'),
     tracking: getString(record, 'tracking', getString(record, 'external_ref')),
+    trackingCode: getNullableString(record, 'tracking_code'),
     status: getString(record, 'status', 'received'),
     city: getNullableString(record, 'city'),
     addressRaw: getNullableString(record, 'addressRaw') ?? getNullableString(record, 'address_raw'),

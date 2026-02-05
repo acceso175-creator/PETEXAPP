@@ -9,6 +9,7 @@ import { LoadingScreen } from '@/components/ui/loading-spinner';
 import { listShipments } from '@/lib/api/shipments';
 import { supabaseConfigError } from '@/lib/supabase/client';
 import { Package, CheckCircle, XCircle } from 'lucide-react';
+import Link from 'next/link';
 import type { Shipment } from '@/lib/api/shipments';
 
 export default function AdminDashboardPage() {
@@ -101,20 +102,22 @@ export default function AdminDashboardPage() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {visibleShipments.map((shipment) => (
-              <Card key={shipment.id} className="p-4 space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-mono text-sm text-slate-700">
-                    {shipment.tracking || shipment.id}
-                  </span>
-                  <StatusBadge status={shipment.status} />
-                </div>
-                <div className="text-xs text-slate-500 space-y-1">
-                  {shipment.city && <p>{shipment.city}</p>}
-                  {shipment.addressNorm || shipment.addressRaw ? (
-                    <p>{shipment.addressNorm || shipment.addressRaw}</p>
-                  ) : null}
-                </div>
-              </Card>
+              <Link key={shipment.id} href={`/admin/shipments/${shipment.id}`}>
+                <Card className="p-4 space-y-2 hover:border-orange-200 hover:shadow-sm transition">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-mono text-sm text-slate-700 hover:text-orange-600">
+                      {shipment.trackingCode || shipment.tracking || shipment.id}
+                    </span>
+                    <StatusBadge status={shipment.status} />
+                  </div>
+                  <div className="text-xs text-slate-500 space-y-1">
+                    {shipment.city && <p>{shipment.city}</p>}
+                    {shipment.addressNorm || shipment.addressRaw ? (
+                      <p>{shipment.addressNorm || shipment.addressRaw}</p>
+                    ) : null}
+                  </div>
+                </Card>
+              </Link>
             ))}
           </div>
         )}

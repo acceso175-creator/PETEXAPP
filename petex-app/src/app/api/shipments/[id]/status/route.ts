@@ -59,7 +59,7 @@ const mapShipment = (row: unknown) => {
   };
 };
 
-export async function GET(request: Request, context: any) {
+export async function POST(request: Request, context: any) {
   const supabase = getSupabaseClient();
 
   if (!supabase) {
@@ -73,15 +73,65 @@ export async function GET(request: Request, context: any) {
   }
 
   const { id } = context.params;
+  const body = (await request.json().catch(() => ({}))) as {
+    status?: string;
+    actorUserId?: string;
+    reason?: string;
+  };
 
-  const { data, error } = await supabase.from('shipments').select('*').eq('id', id).single();
-
-  if (error || !data) {
+  if (!body.status) {
     return NextResponse.json(
-      { error: 'Envío no encontrado.' },
-      { status: error?.code === 'PGRST116' ? 404 : 500 }
+      { error: 'Debe proporcionar un estado válido.' },
+      { status: 400 }
     );
   }
 
-  return NextResponse.json({ data: mapShipment(data) });
+  const { data: current, error: currentError } = await supabase
+    .from('shipments')
+    .select('status')
+    .eq('id', id)
+    .single();
+
+  if (currentError) {
+    return NextResponse.json(
+      { error: `Error obteniendo envío: ${currentError.message}` },
+      { status: 500 }
+    );
+  }
+
+  const { data: updated, error: updateError } = await supabase
+    .from('shipments')
+    .update({ status: body.status, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select('*')
+    .single();
+
+  if (updateError) {
+    return NextResponse.json(
+      { error: `Error actualizando envío: ${updateError.message}` },
+      { status: 500 }
+    );
+  }
+
+  const payload = {
+    from: (current as { status?: string | null }).status ?? null,
+    to: body.status,
+    ...(body.reason ? { reason: body.reason } : {}),
+  };
+
+  const { error: eventError } = await supabase.from('shipment_events').insert({
+    shipment_id: id,
+    actor_user_id: body.actorUserId ?? null,
+    type: 'status_changed',
+    payload,
+  });
+
+  if (eventError) {
+    return NextResponse.json(
+      { error: `Error registrando evento: ${eventError.message}` },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ data: mapShipment(updated) });
 }

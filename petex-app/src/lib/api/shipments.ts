@@ -1,6 +1,7 @@
 export interface Shipment {
   id: string;
   tracking: string;
+  trackingCode?: string | null;
   status: string;
   city?: string | null;
   addressRaw?: string | null;
@@ -23,6 +24,7 @@ export interface DeliveryProof {
   id: string;
   shipmentId: string;
   photoUrl?: string | null;
+  proofUrl?: string | null;
   signatureUrl?: string | null;
   lat?: number | null;
   lng?: number | null;
@@ -77,4 +79,18 @@ export async function listShipmentTimeline(id: string): Promise<ShipmentEvent[]>
 
 export async function listShipmentProofs(id: string): Promise<DeliveryProof[]> {
   return fetchJson<DeliveryProof[]>(`/api/shipments/${id}/proofs`);
+}
+
+export async function updateShipmentStatus(
+  id: string,
+  status: string,
+  payload?: { actorUserId?: string; reason?: string }
+): Promise<Shipment> {
+  return fetchJson<Shipment>(`/api/shipments/${id}/status`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ status, ...payload }),
+  });
 }

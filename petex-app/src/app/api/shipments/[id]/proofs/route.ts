@@ -57,6 +57,7 @@ const mapProof = (row: unknown) => {
     id: getString(record, 'id'),
     shipmentId: getString(record, 'shipmentId', getString(record, 'shipment_id')),
     photoUrl: getNullableString(record, 'photoUrl') ?? getNullableString(record, 'photo_url'),
+    proofUrl: getNullableString(record, 'proofUrl') ?? getNullableString(record, 'proof_url'),
     signatureUrl:
       getNullableString(record, 'signatureUrl') ?? getNullableString(record, 'signature_url'),
     lat: getNullableNumber(record, 'lat') ?? getNullableNumber(record, 'latitude'),
