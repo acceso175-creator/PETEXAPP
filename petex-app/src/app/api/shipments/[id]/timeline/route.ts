@@ -43,13 +43,10 @@ const mapEvent = (row: unknown) => {
   };
 };
 
-interface RouteContext {
-  params: {
-    id: string;
-  };
-}
-
-export async function GET(request: Request, context: RouteContext) {
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
   const supabase = getSupabaseClient();
 
   if (!supabase) {
@@ -62,7 +59,7 @@ export async function GET(request: Request, context: RouteContext) {
     );
   }
 
-  const { id } = context.params;
+  const { id } = params;
 
   const { data, error } = await supabase
     .from('shipment_events')
