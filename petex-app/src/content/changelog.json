@@ -1,6 +1,16 @@
 [
   {
     "date": "2026-02-05",
+    "title": "Fix Netlify prerender en /auth/callback",
+    "highlights": [
+      "Se refactorizó /auth/callback a página server con Suspense para cumplir Next.js build.",
+      "Se movió useSearchParams/useRouter a CallbackClient.tsx con use client.",
+      "Se agregó dynamic = force-dynamic para evitar prerender estático en callback.",
+      "Se mantuvo exchangeCodeForSession(code) y redirección final a /app tras procesar sesión."
+    ]
+  },
+  {
+    "date": "2026-02-05",
     "title": "Fix callback de Supabase + RLS sin recursión",
     "highlights": [
       "Se agregó /auth/callback para procesar retorno de confirmación y recuperación de contraseña.",
