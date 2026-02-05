@@ -1,6 +1,17 @@
 [
   {
     "date": "2026-02-05",
+    "title": "Fix callback de Supabase + RLS sin recursión",
+    "highlights": [
+      "Se agregó /auth/callback para procesar retorno de confirmación y recuperación de contraseña.",
+      "Signup y reset password ahora usan redirect URLs basadas en window.location.origin para evitar localhost incorrecto.",
+      "Se corrigieron policies de profiles para eliminar la recursión infinita con una función SECURITY DEFINER is_admin().",
+      "Se reforzó que el cliente no pueda cambiar role con permisos de update limitados a email/full_name.",
+      "Se mantuvo el resumen de actualización en login con historial actualizado."
+    ]
+  },
+  {
+    "date": "2026-02-05",
     "title": "Fix crítico de signup en Supabase",
     "highlights": [
       "Se auditó la configuración de NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.",

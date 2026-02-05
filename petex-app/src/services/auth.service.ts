@@ -102,6 +102,18 @@ const mapAuthErrorMessage = (message?: string) => {
   return raw;
 };
 
+
+const getAuthRedirectUrl = (nextPath: '/app' | '/reset-password') => {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+
+  const origin = window.location.origin;
+  const callbackUrl = new URL('/auth/callback', origin);
+  callbackUrl.searchParams.set('next', nextPath);
+  return callbackUrl.toString();
+};
+
 const fetchProfile = async (userId: string): Promise<{ data?: ProfileRow; error?: string }> => {
   try {
     const supabase = getSupabaseClient();
@@ -267,10 +279,13 @@ export async function signup(credentials: SignupCredentials): Promise<AuthRespon
         console.info('[PETEX][AUTH] Endpoint esperado signup:', `${runtime.url}/auth/v1/signup`);
       }
 
+      const emailRedirectTo = getAuthRedirectUrl('/app');
+
       const { data, error } = await supabase.auth.signUp({
         email: normalizedEmail,
         password: credentials.password,
         options: {
+          emailRedirectTo,
           data: {
             full_name: credentials.name.trim(),
           },
@@ -351,9 +366,7 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
   if (canUseSupabase()) {
     try {
       const supabase = getSupabaseClient();
-      const redirectTo = typeof window !== 'undefined'
-        ? `${window.location.origin}/reset-password`
-        : undefined;
+      const redirectTo = getAuthRedirectUrl('/reset-password');
 
       const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
         redirectTo,
