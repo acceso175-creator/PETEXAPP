@@ -1,0 +1,65 @@
+[
+  {
+    "date": "2026-02-05",
+    "title": "Fix Netlify prerender en /auth/callback",
+    "highlights": [
+      "Se refactorizó /auth/callback a página server con Suspense para cumplir Next.js build.",
+      "Se movió useSearchParams/useRouter a CallbackClient.tsx con use client.",
+      "Se agregó dynamic = force-dynamic para evitar prerender estático en callback.",
+      "Se mantuvo exchangeCodeForSession(code) y redirección final a /app tras procesar sesión."
+    ]
+  },
+  {
+    "date": "2026-02-05",
+    "title": "Fix callback de Supabase + RLS sin recursión",
+    "highlights": [
+      "Se agregó /auth/callback para procesar retorno de confirmación y recuperación de contraseña.",
+      "Signup y reset password ahora usan redirect URLs basadas en window.location.origin para evitar localhost incorrecto.",
+      "Se corrigieron policies de profiles para eliminar la recursión infinita con una función SECURITY DEFINER is_admin().",
+      "Se reforzó que el cliente no pueda cambiar role con permisos de update limitados a email/full_name.",
+      "Se mantuvo el resumen de actualización en login con historial actualizado."
+    ]
+  },
+  {
+    "date": "2026-02-05",
+    "title": "Fix crítico de signup en Supabase",
+    "highlights": [
+      "Se auditó la configuración de NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+      "Se agregó health-check visible en login (solo dev) con project-ref y estado de conexión.",
+      "Se corrigió el flujo de signUp para no fallar cuando hay confirmación por correo o perfil aún no sincronizado.",
+      "Se mejoraron mensajes de error de auth: Invalid API key, Email rate limit, User already registered y Email not confirmed.",
+      "Se agregaron logs de depuración en dev con URL de Supabase y endpoint esperado /auth/v1/signup."
+    ]
+  },
+  {
+    "date": "2026-02-05",
+    "title": "Roles y perfiles en Supabase",
+    "highlights": [
+      "Se creó el enum user_role con admin, driver y ops en la base de datos.",
+      "Se agregó la tabla profiles y un trigger automático al registrar usuarios en auth.users.",
+      "Se activó RLS en profiles con políticas para perfil propio y lectura global para admin.",
+      "El login ahora carga el rol desde Supabase y protege mejor el acceso a /admin.",
+      "Se añadió un endpoint seguro para actualizar roles usando service role solo en backend."
+    ]
+  },
+  {
+    "date": "2026-02-05",
+    "title": "Bloque 3: Auth y seguridad",
+    "highlights": [
+      "Se habilitó registro de usuarios (signup) con sesión automática.",
+      "Se agregaron rutas protegidas y redirección inteligente para usuarios autenticados.",
+      "Se implementó flujo de recuperación de contraseña con validaciones y mensajes claros.",
+      "Se mejoró el cierre de sesión con redirección y toast de confirmación.",
+      "Se añadió un resumen de actualización con historial en modal dentro del login."
+    ]
+  },
+  {
+    "date": "2025-02-04",
+    "title": "Mejoras de login",
+    "highlights": [
+      "Se agregó un resumen visual de cambios en la pantalla de acceso.",
+      "Se mejoró la sección de demo rápida para QA.",
+      "Se pulieron mensajes de estado durante la carga."
+    ]
+  }
+]

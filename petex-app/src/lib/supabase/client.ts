@@ -22,3 +22,23 @@ export const getSupabaseClient = () => {
   }
   return supabase;
 };
+
+export const getSupabaseRuntimeConfig = () => {
+  const url = supabaseUrl || null;
+  const projectRef = url
+    ? (() => {
+        try {
+          return new URL(url).hostname.split('.')[0] ?? null;
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+
+  return {
+    url,
+    projectRef,
+    hasAnonKey: Boolean(supabaseAnonKey),
+    configError: supabaseConfigError,
+  };
+};
