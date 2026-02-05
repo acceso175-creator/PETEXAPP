@@ -1,6 +1,17 @@
 [
   {
     "date": "2026-02-05",
+    "title": "Roles y perfiles en Supabase",
+    "highlights": [
+      "Se creó el enum user_role con admin, driver y ops en la base de datos.",
+      "Se agregó la tabla profiles y un trigger automático al registrar usuarios en auth.users.",
+      "Se activó RLS en profiles con políticas para perfil propio y lectura global para admin.",
+      "El login ahora carga el rol desde Supabase y protege mejor el acceso a /admin.",
+      "Se añadió un endpoint seguro para actualizar roles usando service role solo en backend."
+    ]
+  },
+  {
+    "date": "2026-02-05",
     "title": "Bloque 3: Auth y seguridad",
     "highlights": [
       "Se habilitó registro de usuarios (signup) con sesión automática.",

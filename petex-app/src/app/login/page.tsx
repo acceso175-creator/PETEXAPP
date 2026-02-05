@@ -26,6 +26,11 @@ type ChangelogItem = {
 };
 
 const MIN_PASSWORD = 8;
+const getDashboardByRole = (role: 'admin' | 'driver' | 'ops' | undefined) => {
+  if (role === 'admin') return '/admin';
+  if (role === 'ops') return '/admin';
+  return '/app';
+};
 
 export default function LoginPage() {
   const router = useRouter();
@@ -41,11 +46,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      if (user?.role === 'admin') {
-        router.push('/admin');
-      } else {
-        router.push('/app');
-      }
+      router.push(getDashboardByRole(user?.role));
     }
   }, [isLoading, isAuthenticated, user, router]);
 
@@ -80,7 +81,7 @@ export default function LoginPage() {
     const result = await login(email.trim().toLowerCase(), password);
     if (result.success) {
       toast.success('Sesión iniciada');
-      router.push('/app');
+      router.push(getDashboardByRole(result.user?.role));
     } else {
       toast.error(result.error || 'Error al iniciar sesión. Intenta de nuevo.');
     }
@@ -91,7 +92,7 @@ export default function LoginPage() {
     const result = await loginWithPhone(phone.trim(), password);
     if (result.success) {
       toast.success('Sesión iniciada');
-      router.push('/app');
+      router.push(getDashboardByRole(result.user?.role));
     } else {
       toast.error(result.error || 'Error al iniciar sesión. Revisa tus datos.');
     }
@@ -108,7 +109,7 @@ export default function LoginPage() {
     const result = await signup(signupName, signupEmail, signupPassword);
     if (result.success) {
       toast.success('Cuenta creada correctamente');
-      router.push('/app');
+      router.push(getDashboardByRole(result.user?.role));
     } else {
       toast.error(result.error || 'No fue posible crear la cuenta');
     }
