@@ -1,0 +1,22 @@
+[
+  {
+    "date": "2026-02-05",
+    "title": "Bloque 3: Auth y seguridad",
+    "highlights": [
+      "Se habilitó registro de usuarios (signup) con sesión automática.",
+      "Se agregaron rutas protegidas y redirección inteligente para usuarios autenticados.",
+      "Se implementó flujo de recuperación de contraseña con validaciones y mensajes claros.",
+      "Se mejoró el cierre de sesión con redirección y toast de confirmación.",
+      "Se añadió un resumen de actualización con historial en modal dentro del login."
+    ]
+  },
+  {
+    "date": "2025-02-04",
+    "title": "Mejoras de login",
+    "highlights": [
+      "Se agregó un resumen visual de cambios en la pantalla de acceso.",
+      "Se mejoró la sección de demo rápida para QA.",
+      "Se pulieron mensajes de estado durante la carga."
+    ]
+  }
+]

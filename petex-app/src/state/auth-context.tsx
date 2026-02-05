@@ -9,9 +9,12 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signup: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   loginWithPhone: (phone: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   quickLogin: (role: UserRole) => Promise<{ success: boolean; error?: string }>;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
+  resetPassword: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   hasRole: (role: UserRole) => boolean;
 }
 
@@ -22,7 +25,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session on mount
     const checkSession = async () => {
       try {
         const currentUser = await authService.getCurrentUser();
@@ -51,6 +53,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const signup = useCallback(async (name: string, email: string, password: string) => {
+    setIsLoading(true);
+    try {
+      const response = await authService.signup({ name, email, password });
+      if (response.success && response.user) {
+        setUser(response.user);
+        return { success: true };
+      }
+      return { success: false, error: response.error };
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   const loginWithPhone = useCallback(async (phone: string, password: string) => {
     setIsLoading(true);
     try {
@@ -60,6 +76,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: true };
       }
       return { success: false, error: response.error };
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const requestPasswordReset = useCallback(async (email: string) => {
+    setIsLoading(true);
+    try {
+      return await authService.requestPasswordReset(email);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const resetPassword = useCallback(async (email: string, password: string) => {
+    setIsLoading(true);
+    try {
+      return await authService.resetPassword(email, password);
     } finally {
       setIsLoading(false);
     }
@@ -100,9 +134,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         isAuthenticated: !!user,
         login,
+        signup,
         loginWithPhone,
         logout,
         quickLogin,
+        requestPasswordReset,
+        resetPassword,
         hasRole,
       }}
     >
@@ -119,7 +156,6 @@ export function useAuth() {
   return context;
 }
 
-// Hook for protected routes
 export function useRequireAuth(requiredRole?: UserRole) {
   const { user, isLoading, isAuthenticated } = useAuth();
 

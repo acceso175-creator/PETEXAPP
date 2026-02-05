@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/state';
 import { useState } from 'react';
+import { toast } from 'sonner';
 
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
@@ -38,8 +39,15 @@ const navItems = [
 
 export function AdminSidebar({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const handleLogout = async () => {
+    await logout();
+    toast.success('Sesión cerrada');
+    router.push('/login');
+  };
 
   const NavContent = () => (
     <nav className="flex flex-col gap-1 p-2">
@@ -103,7 +111,7 @@ export function AdminSidebar({ children }: { children: React.ReactNode }) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onClick={() => logout()}>
+              <DropdownMenuItem onClick={handleLogout}>
                 <LogOut className="h-4 w-4 mr-2" />
                 Cerrar sesión
               </DropdownMenuItem>
