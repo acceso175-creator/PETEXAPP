@@ -7,3 +7,5 @@ export const releaseNotes = {
     'Estados de actualización más claros para QA.',
   ],
 };
+
+export default releaseNotes;
