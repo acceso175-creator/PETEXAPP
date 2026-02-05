@@ -5,11 +5,13 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/state';
 import { StopCard } from '@/components/domain/stop-card';
 import { EvidenceModal } from '@/components/domain/evidence-modal';
+import { FailureReasonModal } from '@/components/domain/failure-reason-modal';
 import { MapPlaceholder } from '@/components/domain/map-placeholder';
 import { LoadingScreen } from '@/components/ui/loading-spinner';
-import { getDriverTodayRoute, getRouteStops, updateStopStatus } from '@/services/routes.service';
+import { getDriverTodayRoute, getRouteStops } from '@/services/routes.service';
 import { createProof } from '@/services/packages.service';
 import { getPackageById } from '@/lib/mock-data';
+import { setDeliveryStatus } from '@/lib/api/deliveries';
 import { toast } from 'sonner';
 import type { Route, Stop, Package, MapMarker } from '@/types';
 
@@ -23,6 +25,12 @@ export default function DriverRoutePage() {
     stop?: Stop;
     pkg?: Package;
   }>({ open: false });
+  const [failureModal, setFailureModal] = useState<{
+    open: boolean;
+    stop?: Stop;
+    pkg?: Package;
+  }>({ open: false });
+  const [updatingStopId, setUpdatingStopId] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -51,6 +59,7 @@ export default function DriverRoutePage() {
     if (!evidenceModal.stop || !evidenceModal.pkg) return;
 
     try {
+      setUpdatingStopId(evidenceModal.stop.id);
       await createProof({
         packageId: evidenceModal.pkg.id,
         stopId: evidenceModal.stop.id,
@@ -58,7 +67,9 @@ export default function DriverRoutePage() {
         lat: data.lat,
         lng: data.lng,
       });
-      await updateStopStatus(evidenceModal.stop.id, 'delivered');
+      await setDeliveryStatus(evidenceModal.pkg.id, 'entregado', {
+        actorUserId: user?.id,
+      });
 
       setStops((prev) =>
         prev.map((s) =>
@@ -71,21 +82,36 @@ export default function DriverRoutePage() {
     } catch (error) {
       toast.error('Error al confirmar entrega');
     } finally {
+      setUpdatingStopId(null);
       setEvidenceModal({ open: false });
     }
   };
 
-  const handleMarkFailed = async (stop: Stop) => {
+  const handleMarkFailed = (stop: Stop, pkg: Package) => {
+    setFailureModal({ open: true, stop, pkg });
+  };
+
+  const handleConfirmFailure = async (reason: string) => {
+    if (!failureModal.stop || !failureModal.pkg) return;
     try {
-      await updateStopStatus(stop.id, 'failed', 'No especificado');
+      setUpdatingStopId(failureModal.stop.id);
+      await setDeliveryStatus(failureModal.pkg.id, 'fallido', {
+        reason,
+        actorUserId: user?.id,
+      });
       setStops((prev) =>
         prev.map((s) =>
-          s.id === stop.id ? { ...s, status: 'failed' as const } : s
+          s.id === failureModal.stop?.id
+            ? { ...s, status: 'failed' as const, failureReason: reason }
+            : s
         )
       );
-      toast.success('Parada marcada como fallida');
+      toast.success('Entrega marcada como fallida');
     } catch (error) {
-      toast.error('Error al actualizar parada');
+      toast.error('Error al actualizar entrega');
+    } finally {
+      setUpdatingStopId(null);
+      setFailureModal({ open: false });
     }
   };
 
@@ -142,7 +168,8 @@ export default function DriverRoutePage() {
               isFirst={idx === 0}
               isLast={idx === stops.length - 1}
               onOpenEvidence={() => handleMarkDelivered(stop, pkg)}
-              onMarkFailed={() => handleMarkFailed(stop)}
+              onMarkFailed={() => handleMarkFailed(stop, pkg)}
+              isUpdating={updatingStopId === stop.id}
             />
           );
         })}
@@ -155,6 +182,15 @@ export default function DriverRoutePage() {
         onConfirm={handleConfirmDelivery}
         packageTracking={evidenceModal.pkg?.tracking || ''}
         recipientName={evidenceModal.pkg?.recipientName}
+      />
+
+      <FailureReasonModal
+        open={failureModal.open}
+        onClose={() => setFailureModal({ open: false })}
+        onConfirm={handleConfirmFailure}
+        packageTracking={failureModal.pkg?.tracking || ''}
+        recipientName={failureModal.pkg?.recipientName}
+        isSubmitting={Boolean(updatingStopId)}
       />
     </div>
   );

@@ -18,6 +18,9 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const buildId = process.env.NEXT_PUBLIC_APP_BUILD_ID || 'local';
+  const buildContext = process.env.NEXT_PUBLIC_NETLIFY_CONTEXT || 'local';
+  const buildTime = process.env.NEXT_PUBLIC_BUILD_TIME || 'local';
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -175,6 +178,11 @@ export default function LoginPage() {
             <strong>Demo:</strong> carlos@petex.mx / admin123
           </p>
         </div>
+
+        <footer className="mt-6 text-center text-[11px] text-slate-400">
+          <span className="font-medium">Build:</span> {buildId} |{' '}
+          {buildContext} | {buildTime}
+        </footer>
       </Card>
     </div>
   );
