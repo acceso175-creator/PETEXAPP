@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase/client';
+import { getSupabaseClient } from '@/lib/supabase/client';
 import type { Delivery, DeliveryEvent, DeliveryStatus } from '@/lib/types/domain';
 
 export interface DeliveryFilters {
@@ -8,6 +8,7 @@ export interface DeliveryFilters {
 }
 
 export async function listDeliveries(filters: DeliveryFilters = {}): Promise<Delivery[]> {
+  const supabase = getSupabaseClient();
   let query = supabase.from('deliveries').select('*');
 
   if (filters.status) {
@@ -35,6 +36,7 @@ export async function listDeliveries(filters: DeliveryFilters = {}): Promise<Del
 }
 
 export async function getDelivery(id: string): Promise<Delivery> {
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase.from('deliveries').select('*').eq('id', id).single();
 
   if (error) {
@@ -49,6 +51,7 @@ export async function updateDeliveryStatus(
   status: DeliveryStatus,
   payload: Partial<Delivery> = {}
 ): Promise<Delivery> {
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('deliveries')
     .update({ ...payload, status })
@@ -75,6 +78,7 @@ export async function setDeliveryStatus(
   status: DeliveryStatus,
   opts: SetDeliveryStatusOptions = {}
 ): Promise<Delivery> {
+  const supabase = getSupabaseClient();
   if (!validStatuses.includes(status)) {
     throw new Error(`Estado inválido: ${status}`);
   }
@@ -136,6 +140,7 @@ export async function setDeliveryStatus(
 }
 
 export async function listDeliveryEvents(deliveryId: string): Promise<DeliveryEvent[]> {
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('delivery_events')
     .select('*')
