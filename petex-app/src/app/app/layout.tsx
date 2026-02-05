@@ -1,4 +1,3 @@
-// Root route fix: added driver app layout.tsx
 import { ProtectedRoute } from '@/components/layout/protected-route';
 import { DriverNav } from '@/components/layout/driver-nav';
 
@@ -8,7 +7,7 @@ export default function DriverAppLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ProtectedRoute requiredRole="driver">
+    <ProtectedRoute allowedRoles={['driver', 'admin']}>
       <DriverNav>{children}</DriverNav>
     </ProtectedRoute>
   );

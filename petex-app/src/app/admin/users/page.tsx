@@ -1,136 +1,154 @@
-// Admin users page
 'use client';
 
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { LoadingScreen } from '@/components/ui/loading-spinner';
-import { getUsers, toggleUserActive } from '@/services/users.service';
-import { Plus, Phone, Mail, MoreVertical } from 'lucide-react';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import type { User } from '@/types';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { toast } from 'sonner';
+import { getSupabaseClient, supabaseConfigError } from '@/lib/supabase/client';
+import type { UserRole } from '@/types';
+
+type Profile = {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+  role: UserRole;
+};
+
+const roleOptions: UserRole[] = ['admin', 'driver', 'ops'];
 
 export default function AdminUsersPage() {
-  const [users, setUsers] = useState<User[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [changingId, setChangingId] = useState<string | null>(null);
+
+  const loadProfiles = async () => {
+    setIsLoading(true);
+    try {
+      if (supabaseConfigError) {
+        toast.error('Supabase no está configurado en este entorno.');
+        setProfiles([]);
+        return;
+      }
+
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id,email,full_name,role')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setProfiles((data ?? []) as Profile[]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudieron cargar los usuarios');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadUsers = async () => {
-      try {
-        const data = await getUsers();
-        setUsers(data);
-      } catch (error) {
-        console.error('Error loading users:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadUsers();
+    loadProfiles();
   }, []);
 
-  const handleToggleActive = async (userId: string) => {
-    const updated = await toggleUserActive(userId);
-    if (updated) {
-      setUsers((prev) =>
-        prev.map((u) => (u.id === userId ? updated : u))
-      );
+  const handleRoleChange = async (profileId: string, newRole: UserRole) => {
+    if (supabaseConfigError) {
+      toast.error('Falta configuración de Supabase para cambiar roles.');
+      return;
+    }
+
+    setChangingId(profileId);
+    try {
+      const supabase = getSupabaseClient();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
+      if (!accessToken) {
+        toast.error('Tu sesión expiró. Inicia sesión nuevamente.');
+        return;
+      }
+
+      const response = await fetch('/api/admin/set-role', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ userId: profileId, role: newRole }),
+      });
+
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || 'No se pudo actualizar el rol');
+      }
+
+      toast.success('Rol actualizado correctamente');
+      await loadProfiles();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error al cambiar el rol');
+    } finally {
+      setChangingId(null);
     }
   };
 
   if (isLoading) {
-    return <LoadingScreen message="Cargando usuarios..." />;
+    return <LoadingScreen message="Cargando perfiles..." />;
   }
-
-  const admins = users.filter((u) => u.role === 'admin');
-  const drivers = users.filter((u) => u.role === 'driver');
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Usuarios</h1>
-          <p className="text-slate-500">Gestión de administradores y drivers</p>
-        </div>
-        <Button className="bg-orange-600 hover:bg-orange-700">
-          <Plus className="h-4 w-4 mr-2" />
-          Nuevo Usuario
-        </Button>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-900">Usuarios</h1>
+        <p className="text-slate-500">Administra roles de acceso de forma segura.</p>
       </div>
 
-      {/* Admins */}
-      <div className="mb-8">
-        <h2 className="text-lg font-semibold mb-4">Administradores</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {admins.map((user) => (
-            <UserCard key={user.id} user={user} onToggleActive={handleToggleActive} />
-          ))}
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50">
+              <tr className="border-b border-slate-200 text-left text-slate-600">
+                <th className="px-4 py-3 font-medium">Email</th>
+                <th className="px-4 py-3 font-medium">Nombre</th>
+                <th className="px-4 py-3 font-medium">Role</th>
+              </tr>
+            </thead>
+            <tbody>
+              {profiles.map((profile) => (
+                <tr key={profile.id} className="border-b border-slate-100">
+                  <td className="px-4 py-3 text-slate-800">{profile.email ?? 'Sin correo'}</td>
+                  <td className="px-4 py-3 text-slate-700">{profile.full_name ?? 'Sin nombre'}</td>
+                  <td className="px-4 py-3">
+                    <Select
+                      value={profile.role}
+                      onValueChange={(value) => handleRoleChange(profile.id, value as UserRole)}
+                      disabled={changingId === profile.id}
+                    >
+                      <SelectTrigger className="w-[140px]">
+                        <SelectValue placeholder="Seleccionar rol" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {roleOptions.map((role) => (
+                          <SelectItem key={role} value={role} className="capitalize">
+                            {role}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!profiles.length ? (
+            <p className="p-4 text-sm text-slate-500">No hay perfiles para mostrar.</p>
+          ) : null}
         </div>
-      </div>
-
-      {/* Drivers */}
-      <div>
-        <h2 className="text-lg font-semibold mb-4">Drivers</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {drivers.map((user) => (
-            <UserCard key={user.id} user={user} onToggleActive={handleToggleActive} />
-          ))}
-        </div>
-      </div>
+      </Card>
     </div>
-  );
-}
-
-function UserCard({ user, onToggleActive }: { user: User; onToggleActive: (id: string) => void }) {
-  return (
-    <Card className="p-4">
-      <div className="flex items-start gap-3">
-        <Avatar className="h-12 w-12">
-          <AvatarFallback className="bg-orange-100 text-orange-700">
-            {user.name.split(' ').map((n) => n[0]).join('')}
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium truncate">{user.name}</span>
-            <Badge variant={user.active ? 'default' : 'secondary'} className={user.active ? 'bg-green-600' : ''}>
-              {user.active ? 'Activo' : 'Inactivo'}
-            </Badge>
-          </div>
-          <div className="mt-2 space-y-1 text-sm text-slate-500">
-            {user.email && (
-              <div className="flex items-center gap-2">
-                <Mail className="h-3.5 w-3.5" />
-                <span className="truncate">{user.email}</span>
-              </div>
-            )}
-            {user.phone && (
-              <div className="flex items-center gap-2">
-                <Phone className="h-3.5 w-3.5" />
-                <span>{user.phone}</span>
-              </div>
-            )}
-          </div>
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onToggleActive(user.id)}>
-              {user.active ? 'Desactivar' : 'Activar'}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </Card>
   );
 }

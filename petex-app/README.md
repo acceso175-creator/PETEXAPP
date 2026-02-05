@@ -43,3 +43,13 @@ If you configure builds manually in the Netlify UI, use:
 - Base directory: `petex-app`
 - Build command: `npm run build`
 - Publish directory: `.next`
+
+## Variables de entorno (Supabase)
+
+Configura estas variables en `.env.local` y en Netlify:
+
+- `NEXT_PUBLIC_SUPABASE_URL` (URL del proyecto Supabase)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (anon key pública para cliente)
+- `SUPABASE_SERVICE_ROLE_KEY` (solo backend/server, nunca cliente)
+
+> Nota: en algunos documentos internos se usa `SUPABASE_URL` / `SUPABASE_ANON_KEY`; en esta app Next.js se consumen como `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY` para el cliente.

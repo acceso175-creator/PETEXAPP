@@ -1,181 +1,173 @@
-// Root route fix: added driver app page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useAuth } from '@/state';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import { StatCard } from '@/components/ui/stat-card';
+import { Badge } from '@/components/ui/badge';
 import { LoadingScreen } from '@/components/ui/loading-spinner';
-import { getDriverTodayRoute, getRouteStops } from '@/services/routes.service';
-import { getPackageById } from '@/lib/mock-data';
-import {
-  Route as RouteIcon,
-  MapPin,
-  CheckCircle,
-  Clock,
-  ChevronRight,
-  Package,
-} from 'lucide-react';
-import Link from 'next/link';
-import type { Route, Stop, DriverStats } from '@/types';
+import { getSupabaseClient, supabaseConfigError } from '@/lib/supabase/client';
+import { useAuth } from '@/state';
+import { Route as RouteIcon, MapPin, ChevronRight } from 'lucide-react';
+
+type DriverRoute = {
+  id: string;
+  date: string;
+  status: string;
+  notes: string | null;
+};
+
+type DriverStop = {
+  id: string;
+  stop_order: number;
+  recipient_name: string | null;
+  address: string | null;
+  status: string;
+};
+
+const todayLocalIso = () => {
+  const now = new Date();
+  const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 10);
+};
 
 export default function DriverHomePage() {
   const { user } = useAuth();
-  const [route, setRoute] = useState<Route | null>(null);
-  const [stops, setStops] = useState<Stop[]>([]);
+  const [route, setRoute] = useState<DriverRoute | null>(null);
+  const [stops, setStops] = useState<DriverStop[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadData = async () => {
+    const loadTodayRoute = async () => {
       if (!user) return;
+      setIsLoading(true);
+      setError(null);
+
+      if (supabaseConfigError) {
+        setIsLoading(false);
+        setError('Supabase no está configurado en este entorno.');
+        return;
+      }
+
       try {
-        const routeData = await getDriverTodayRoute(user.id);
-        setRoute(routeData);
-        if (routeData) {
-          const stopsData = await getRouteStops(routeData.id);
-          setStops(stopsData);
+        const supabase = getSupabaseClient();
+        const today = todayLocalIso();
+
+        const { data: routeData, error: routeError } = await supabase
+          .from('routes')
+          .select('id,date,status,notes')
+          .eq('driver_id', user.id)
+          .eq('date', today)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (routeError) {
+          throw routeError;
         }
-      } catch (error) {
-        console.error('Error loading route:', error);
+
+        if (!routeData) {
+          setRoute(null);
+          setStops([]);
+          return;
+        }
+
+        setRoute(routeData as DriverRoute);
+
+        const { data: stopsData, error: stopsError } = await supabase
+          .from('route_stops')
+          .select('id,stop_order,recipient_name,address,status')
+          .eq('route_id', routeData.id)
+          .order('stop_order', { ascending: true });
+
+        if (stopsError) {
+          throw stopsError;
+        }
+
+        setStops((stopsData ?? []) as DriverStop[]);
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar tu ruta de hoy');
       } finally {
         setIsLoading(false);
       }
     };
-    loadData();
+
+    loadTodayRoute();
   }, [user]);
 
+  const completedStops = useMemo(
+    () => stops.filter((stop) => stop.status === 'delivered').length,
+    [stops]
+  );
+
   if (isLoading) {
-    return <LoadingScreen message="Cargando tu ruta..." />;
+    return <LoadingScreen message="Cargando tu ruta de hoy..." />;
   }
 
-  const stats: DriverStats = {
-    totalStops: stops.length,
-    completed: stops.filter((s) => s.status === 'delivered').length,
-    pending: stops.filter((s) => s.status === 'pending').length,
-    failed: stops.filter((s) => s.status === 'failed').length,
-    progressPct: route?.progressPct || 0,
-  };
-
-  const nextStop = stops.find((s) => s.status === 'pending');
-  const nextPackage = nextStop ? getPackageById(nextStop.packageId) : null;
-
   return (
-    <div className="p-4">
-      {/* Greeting */}
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-slate-900">
-          Hola, {user?.name.split(' ')[0]}
-        </h1>
-        <p className="text-slate-500">
-          {route ? route.name : 'Sin ruta asignada hoy'}
-        </p>
+    <div className="p-4 sm:p-6">
+      <div className="mb-4">
+        <h1 className="text-xl font-bold text-slate-900">Mi ruta de hoy</h1>
+        <p className="text-sm text-slate-500">Vista rápida de tus paradas asignadas.</p>
       </div>
 
-      {route ? (
-        <>
-          {/* Progress Card */}
-          <Card className="p-4 mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <RouteIcon className="h-5 w-5 text-orange-600" />
-                <span className="font-medium">Progreso del día</span>
-              </div>
-              <span className="text-2xl font-bold text-orange-600">
-                {stats.progressPct}%
-              </span>
-            </div>
-            <Progress value={stats.progressPct} className="h-3 mb-3" />
-            <div className="flex justify-between text-sm text-slate-600">
-              <span>{stats.completed} entregados</span>
-              <span>{stats.pending} pendientes</span>
-              {stats.failed > 0 && (
-                <span className="text-red-600">{stats.failed} fallidos</span>
-              )}
-            </div>
-          </Card>
+      {error ? (
+        <Card className="p-4 text-sm text-red-600">{error}</Card>
+      ) : null}
 
-          {/* Stats */}
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            <StatCard
-              title="Paradas"
-              value={`${stats.completed}/${stats.totalStops}`}
-              icon={MapPin}
-            />
-            <StatCard
-              title="Tiempo est."
-              value={route.estimatedTime || '-'}
-              icon={Clock}
-            />
-          </div>
-
-          {/* Next Stop */}
-          {nextStop && nextPackage && (
-            <div className="mb-4">
-              <h2 className="text-sm font-medium text-slate-500 mb-2">
-                Siguiente parada
-              </h2>
-              <Link href="/app/route">
-                <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer">
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
-                      <span className="font-bold text-orange-600">
-                        {nextStop.order}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-mono text-sm font-medium">
-                        {nextPackage.tracking}
-                      </p>
-                      <p className="text-sm text-slate-600 mt-1 line-clamp-2">
-                        {nextPackage.addressRaw}
-                      </p>
-                      {nextPackage.recipientName && (
-                        <p className="text-sm text-slate-500 mt-1">
-                          {nextPackage.recipientName}
-                        </p>
-                      )}
-                    </div>
-                    <ChevronRight className="h-5 w-5 text-slate-400" />
-                  </div>
-                </Card>
-              </Link>
-            </div>
-          )}
-
-          {/* Quick Actions */}
-          <div className="grid grid-cols-2 gap-3">
-            <Link href="/app/route">
-              <Button variant="outline" className="w-full h-auto py-4">
-                <div className="flex flex-col items-center gap-1">
-                  <RouteIcon className="h-6 w-6 text-orange-600" />
-                  <span>Ver Ruta</span>
-                </div>
-              </Button>
-            </Link>
-            <Link href="/app/scan">
-              <Button className="w-full h-auto py-4 bg-orange-600 hover:bg-orange-700">
-                <div className="flex flex-col items-center gap-1">
-                  <Package className="h-6 w-6" />
-                  <span>Escanear</span>
-                </div>
-              </Button>
-            </Link>
-          </div>
-        </>
-      ) : (
+      {!route ? (
         <Card className="p-8 text-center">
-          <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
-            <RouteIcon className="h-8 w-8 text-slate-400" />
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-slate-100">
+            <RouteIcon className="h-7 w-7 text-slate-400" />
           </div>
-          <h2 className="text-lg font-medium text-slate-900 mb-2">
-            Sin ruta asignada
-          </h2>
-          <p className="text-slate-500 text-sm">
-            No tienes ninguna ruta asignada para hoy. Contacta a tu supervisor.
+          <h2 className="text-lg font-semibold text-slate-900">Aún no tienes ruta asignada</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Cuando logística te asigne una ruta para hoy, aparecerá aquí automáticamente.
           </p>
         </Card>
+      ) : (
+        <div className="space-y-4">
+          <Card className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-700">Estado de ruta</p>
+                <p className="text-xs text-slate-500">{route.date}</p>
+              </div>
+              <Badge variant="secondary" className="capitalize">{route.status}</Badge>
+            </div>
+            <p className="mt-3 text-sm text-slate-600">
+              {completedStops} de {stops.length} paradas completadas.
+            </p>
+            <Link href={`/app/route/${route.id}`}>
+              <Button variant="outline" className="mt-4 w-full">
+                Ver detalles
+                <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          </Card>
+
+          <Card className="p-4">
+            <h3 className="mb-3 text-sm font-semibold text-slate-800">Paradas</h3>
+            <div className="space-y-2">
+              {stops.map((stop) => (
+                <div key={stop.id} className="flex items-start justify-between rounded-lg border border-slate-200 p-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">#{stop.stop_order} · {stop.recipient_name || 'Destinatario'}</p>
+                    <p className="text-xs text-slate-500">{stop.address || 'Dirección pendiente'}</p>
+                  </div>
+                  <div className="ml-2 flex items-center gap-1 text-xs capitalize text-slate-500">
+                    <MapPin className="h-3.5 w-3.5" />
+                    {stop.status}
+                  </div>
+                </div>
+              ))}
+              {!stops.length ? (
+                <p className="text-sm text-slate-500">Esta ruta aún no tiene paradas cargadas.</p>
+              ) : null}
+            </div>
+          </Card>
+        </div>
       )}
     </div>
   );

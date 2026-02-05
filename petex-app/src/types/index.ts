@@ -1,6 +1,6 @@
 // Domain Models for PETEX-APP
 
-export type UserRole = 'admin' | 'driver';
+export type UserRole = 'admin' | 'driver' | 'ops';
 
 export interface User {
   id: string;
