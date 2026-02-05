@@ -15,9 +15,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Package, Loader2, CheckCircle2, Clock3 } from 'lucide-react';
+import { Package, Loader2, CheckCircle2, Clock3, Wifi, WifiOff } from 'lucide-react';
 import { useAuth } from '@/state';
 import { toast } from 'sonner';
+import { getSupabaseHealthCheck, type SupabaseHealthCheck } from '@/services/auth.service';
 
 type ChangelogItem = {
   date: string;
@@ -43,6 +44,7 @@ export default function LoginPage() {
   const [signupPassword, setSignupPassword] = useState('');
   const [changelog, setChangelog] = useState<ChangelogItem[]>([]);
   const [notesLoaded, setNotesLoaded] = useState(false);
+  const [health, setHealth] = useState<SupabaseHealthCheck | null>(null);
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
@@ -68,6 +70,13 @@ export default function LoginPage() {
         if (!isMounted) return;
         setNotesLoaded(true);
       });
+
+    if (process.env.NODE_ENV !== 'production') {
+      getSupabaseHealthCheck().then((result) => {
+        if (!isMounted) return;
+        setHealth(result);
+      });
+    }
 
     return () => {
       isMounted = false;
@@ -107,12 +116,23 @@ export default function LoginPage() {
     }
 
     const result = await signup(signupName, signupEmail, signupPassword);
-    if (result.success) {
-      toast.success('Cuenta creada correctamente');
-      router.push(getDashboardByRole(result.user?.role));
-    } else {
+    if (!result.success) {
       toast.error(result.error || 'No fue posible crear la cuenta');
+      return;
     }
+
+    if (result.requiresEmailConfirmation) {
+      toast.success(result.error || 'Cuenta creada. Revisa tu correo para confirmar.');
+      return;
+    }
+
+    if (!result.user) {
+      toast.success(result.error || 'Cuenta creada. Ya puedes iniciar sesión.');
+      return;
+    }
+
+    toast.success('Cuenta creada correctamente');
+    router.push(getDashboardByRole(result.user.role));
   };
 
   const handleQuickLogin = async (role: 'admin' | 'driver') => {
@@ -136,6 +156,24 @@ export default function LoginPage() {
             <h1 className="text-2xl font-bold text-slate-900">PETEX</h1>
             <p className="mt-1 text-sm text-slate-500">Control de Última Milla</p>
           </div>
+
+          {process.env.NODE_ENV !== 'production' && health ? (
+            <Card className="mb-4 border border-slate-200 bg-slate-50 p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-semibold text-slate-800">Supabase health-check (dev)</p>
+                  <p className="text-[11px] text-slate-500">project-ref: {health.projectRef ?? 'N/D'}</p>
+                  <p className="mt-1 text-[11px] text-slate-500">URL: {health.url ?? 'N/D'}</p>
+                  <p className="mt-1 text-[11px] text-slate-600">{health.message}</p>
+                </div>
+                {health.connectionOk ? (
+                  <Wifi className="h-4 w-4 text-emerald-600" />
+                ) : (
+                  <WifiOff className="h-4 w-4 text-red-600" />
+                )}
+              </div>
+            </Card>
+          ) : null}
 
           <Tabs defaultValue="signin" className="w-full">
             <TabsList className="mb-6 grid w-full grid-cols-3">

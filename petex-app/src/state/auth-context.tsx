@@ -4,7 +4,12 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import type { User, UserRole } from '@/types';
 import * as authService from '@/services/auth.service';
 
-type AuthActionResult = { success: boolean; user?: User; error?: string };
+type AuthActionResult = {
+  success: boolean;
+  user?: User;
+  error?: string;
+  requiresEmailConfirmation?: boolean;
+};
 
 interface AuthContextType {
   user: User | null;
@@ -47,9 +52,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await authService.login({ email, password });
       if (response.success && response.user) {
         setUser(response.user);
-        return { success: true, user: response.user };
       }
-      return { success: false, error: response.error };
+      return response;
     } finally {
       setIsLoading(false);
     }
@@ -61,9 +65,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await authService.signup({ name, email, password });
       if (response.success && response.user) {
         setUser(response.user);
-        return { success: true, user: response.user };
       }
-      return { success: false, error: response.error };
+      return response;
     } finally {
       setIsLoading(false);
     }
@@ -75,9 +78,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await authService.login({ phone, password });
       if (response.success && response.user) {
         setUser(response.user);
-        return { success: true, user: response.user };
       }
-      return { success: false, error: response.error };
+      return response;
     } finally {
       setIsLoading(false);
     }
@@ -117,9 +119,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await authService.quickLogin(role === 'ops' ? 'admin' : role);
       if (response.success && response.user) {
         setUser(response.user);
-        return { success: true, user: response.user };
       }
-      return { success: false, error: response.error };
+      return response;
     } finally {
       setIsLoading(false);
     }

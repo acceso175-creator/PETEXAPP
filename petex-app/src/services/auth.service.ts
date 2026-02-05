@@ -1,12 +1,17 @@
 import type { User, UserRole } from '@/types';
 import { mockUsers } from '@/lib/mock-data';
-import { getSupabaseClient, supabaseConfigError } from '@/lib/supabase/client';
+import {
+  getSupabaseClient,
+  getSupabaseRuntimeConfig,
+  supabaseConfigError,
+} from '@/lib/supabase/client';
 
 const STORAGE_KEY = 'petex_auth_user';
 const CREDENTIALS_STORAGE_KEY = 'petex_auth_credentials';
 const RESET_REQUESTS_STORAGE_KEY = 'petex_auth_reset_requests';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const isDev = process.env.NODE_ENV !== 'production';
 
 export interface LoginCredentials {
   email?: string;
@@ -24,6 +29,15 @@ export interface AuthResponse {
   success: boolean;
   user?: User;
   error?: string;
+  requiresEmailConfirmation?: boolean;
+}
+
+export interface SupabaseHealthCheck {
+  configured: boolean;
+  projectRef: string | null;
+  url: string | null;
+  connectionOk: boolean;
+  message: string;
 }
 
 type StoredCredential = {
@@ -64,6 +78,29 @@ const mapSupabaseUser = (profile: ProfileRow): User => ({
   role: normalizeRole(profile.role),
   active: true,
 });
+
+const mapAuthErrorMessage = (message?: string) => {
+  const raw = message || 'Error de autenticación';
+  const lower = raw.toLowerCase();
+
+  if (lower.includes('invalid api key') || lower.includes('apikey')) {
+    return 'Invalid API key: revisa NEXT_PUBLIC_SUPABASE_ANON_KEY.';
+  }
+  if (lower.includes('rate limit')) {
+    return 'Email rate limit excedido. Intenta nuevamente en unos minutos.';
+  }
+  if (lower.includes('already registered')) {
+    return 'User already registered: ese correo ya existe.';
+  }
+  if (lower.includes('email not confirmed')) {
+    return 'Email not confirmed: confirma tu correo antes de iniciar sesión.';
+  }
+  if (lower.includes('invalid login credentials')) {
+    return 'Credenciales inválidas. Revisa email y contraseña.';
+  }
+
+  return raw;
+};
 
 const fetchProfile = async (userId: string): Promise<{ data?: ProfileRow; error?: string }> => {
   try {
@@ -117,6 +154,49 @@ const setCredentialStore = (credentials: CredentialMap) => {
 
 const getUserById = (userId: string) => mockUsers.find(u => u.id === userId) ?? null;
 
+export async function getSupabaseHealthCheck(): Promise<SupabaseHealthCheck> {
+  const runtimeConfig = getSupabaseRuntimeConfig();
+  if (!canUseSupabase()) {
+    return {
+      configured: false,
+      projectRef: runtimeConfig.projectRef,
+      url: runtimeConfig.url,
+      connectionOk: false,
+      message: supabaseConfigError || 'Supabase no configurado',
+    };
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.auth.getSession();
+    if (error) {
+      return {
+        configured: true,
+        projectRef: runtimeConfig.projectRef,
+        url: runtimeConfig.url,
+        connectionOk: false,
+        message: mapAuthErrorMessage(error.message),
+      };
+    }
+
+    return {
+      configured: true,
+      projectRef: runtimeConfig.projectRef,
+      url: runtimeConfig.url,
+      connectionOk: true,
+      message: 'Conexión OK',
+    };
+  } catch (error) {
+    return {
+      configured: true,
+      projectRef: runtimeConfig.projectRef,
+      url: runtimeConfig.url,
+      connectionOk: false,
+      message: error instanceof Error ? error.message : 'No se pudo conectar',
+    };
+  }
+}
+
 const loginWithMockCredentials = async (credentials: LoginCredentials): Promise<AuthResponse> => {
   await delay(400);
 
@@ -156,12 +236,12 @@ export async function login(credentials: LoginCredentials): Promise<AuthResponse
       });
 
       if (error || !data.user) {
-        return { success: false, error: error?.message || 'No se pudo iniciar sesión' };
+        return { success: false, error: mapAuthErrorMessage(error?.message) };
       }
 
       const profileResult = await fetchProfile(data.user.id);
       if (profileResult.error || !profileResult.data) {
-        return { success: false, error: profileResult.error || 'No se encontró el perfil del usuario' };
+        return { success: false, error: mapAuthErrorMessage(profileResult.error) };
       }
 
       const user = mapSupabaseUser(profileResult.data);
@@ -180,6 +260,13 @@ export async function signup(credentials: SignupCredentials): Promise<AuthRespon
     try {
       const supabase = getSupabaseClient();
       const normalizedEmail = credentials.email.trim().toLowerCase();
+      const runtime = getSupabaseRuntimeConfig();
+
+      if (isDev) {
+        console.info('[PETEX][AUTH] Supabase URL en signup:', runtime.url);
+        console.info('[PETEX][AUTH] Endpoint esperado signup:', `${runtime.url}/auth/v1/signup`);
+      }
+
       const { data, error } = await supabase.auth.signUp({
         email: normalizedEmail,
         password: credentials.password,
@@ -190,18 +277,39 @@ export async function signup(credentials: SignupCredentials): Promise<AuthRespon
         },
       });
 
+      if (isDev) {
+        console.info('[PETEX][AUTH] Resultado signup:', {
+          hasUser: Boolean(data.user),
+          hasSession: Boolean(data.session),
+          error: error?.message ?? null,
+          userId: data.user?.id,
+        });
+      }
+
       if (error || !data.user) {
-        return { success: false, error: error?.message || 'No se pudo crear la cuenta' };
+        return { success: false, error: mapAuthErrorMessage(error?.message) };
+      }
+
+      if (!data.session) {
+        return {
+          success: true,
+          requiresEmailConfirmation: true,
+          error: 'Cuenta creada. Revisa tu correo para confirmar y luego inicia sesión.',
+        };
       }
 
       const profileResult = await fetchProfile(data.user.id);
       if (profileResult.error || !profileResult.data) {
-        return { success: false, error: profileResult.error || 'No se pudo cargar el perfil creado' };
+        // El usuario ya fue creado en auth.users; no bloqueamos el signup por un retraso de profile.
+        return {
+          success: true,
+          requiresEmailConfirmation: false,
+          error: 'Cuenta creada. Completa el login para sincronizar tu perfil.',
+        };
       }
 
       const user = mapSupabaseUser(profileResult.data);
       setStoredSessionUser(user);
-
       return { success: true, user };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Error de red al registrar usuario' };
@@ -252,7 +360,7 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
       });
 
       if (error) {
-        return { success: false, error: error.message };
+        return { success: false, error: mapAuthErrorMessage(error.message) };
       }
 
       return { success: true };
@@ -292,7 +400,7 @@ export async function resetPassword(email: string, newPassword: string): Promise
 
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) {
-        return { success: false, error: error.message };
+        return { success: false, error: mapAuthErrorMessage(error.message) };
       }
 
       return { success: true };

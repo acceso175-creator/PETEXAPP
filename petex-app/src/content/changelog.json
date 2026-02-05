@@ -1,6 +1,17 @@
 [
   {
     "date": "2026-02-05",
+    "title": "Fix crítico de signup en Supabase",
+    "highlights": [
+      "Se auditó la configuración de NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+      "Se agregó health-check visible en login (solo dev) con project-ref y estado de conexión.",
+      "Se corrigió el flujo de signUp para no fallar cuando hay confirmación por correo o perfil aún no sincronizado.",
+      "Se mejoraron mensajes de error de auth: Invalid API key, Email rate limit, User already registered y Email not confirmed.",
+      "Se agregaron logs de depuración en dev con URL de Supabase y endpoint esperado /auth/v1/signup."
+    ]
+  },
+  {
+    "date": "2026-02-05",
     "title": "Roles y perfiles en Supabase",
     "highlights": [
       "Se creó el enum user_role con admin, driver y ops en la base de datos.",
