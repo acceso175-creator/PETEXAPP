@@ -1,7 +1,8 @@
-import { supabase } from '@/lib/supabase/client';
+import { getSupabaseClient } from '@/lib/supabase/client';
 import type { Zone } from '@/lib/types/domain';
 
 export async function listZones(): Promise<Zone[]> {
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase.from('zones').select('*').order('name');
 
   if (error) {

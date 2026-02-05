@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase/client';
+import { getSupabaseClient } from '@/lib/supabase/client';
 import type { Event } from '@/lib/types/domain';
 
 export interface EventFilters {
@@ -11,6 +11,7 @@ export interface EventFilters {
 }
 
 export async function listEvents(filters: EventFilters = {}): Promise<Event[]> {
+  const supabase = getSupabaseClient();
   let query = supabase.from('events').select('*');
 
   if (filters.type) {
@@ -47,6 +48,7 @@ export async function listEvents(filters: EventFilters = {}): Promise<Event[]> {
 }
 
 export async function createEvent(payload: Omit<Event, 'id'>): Promise<Event> {
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase.from('events').insert(payload).select('*').single();
 
   if (error) {

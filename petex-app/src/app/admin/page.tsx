@@ -3,36 +3,33 @@
 
 import { useEffect, useState } from 'react';
 import { StatCard } from '@/components/ui/stat-card';
-import { RouteCard } from '@/components/domain/route-card';
+import { Card } from '@/components/ui/card';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { LoadingScreen } from '@/components/ui/loading-spinner';
-import { getDashboardStats, getRoutes } from '@/services/routes.service';
-import { getZoneById, getUserById } from '@/lib/mock-data';
-import {
-  Route as RouteIcon,
-  Package,
-  Truck,
-  AlertTriangle,
-  CheckCircle,
-  XCircle,
-} from 'lucide-react';
-import type { DashboardStats, Route } from '@/types';
+import { listShipments } from '@/lib/api/shipments';
+import { supabaseConfigError } from '@/lib/supabase/client';
+import { Package, CheckCircle, XCircle } from 'lucide-react';
+import type { Shipment } from '@/lib/api/shipments';
 
 export default function AdminDashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [routes, setRoutes] = useState<Route[]>([]);
+  const [shipments, setShipments] = useState<Shipment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
+      if (supabaseConfigError) {
+        setError(supabaseConfigError);
+        setIsLoading(false);
+        return;
+      }
+
       try {
-        const [statsData, routesData] = await Promise.all([
-          getDashboardStats(),
-          getRoutes({ status: 'active' }),
-        ]);
-        setStats(statsData);
-        setRoutes(routesData);
+        const shipmentsData = await listShipments();
+        setShipments(shipmentsData);
       } catch (error) {
-        console.error('Error loading dashboard:', error);
+        const message = error instanceof Error ? error.message : 'No se pudo cargar el dashboard.';
+        setError(message);
       } finally {
         setIsLoading(false);
       }
@@ -44,60 +41,80 @@ export default function AdminDashboardPage() {
     return <LoadingScreen message="Cargando dashboard..." />;
   }
 
+  const statusCounts = shipments.reduce(
+    (acc, shipment) => {
+      const status = shipment.status || 'received';
+      acc[status] = (acc[status] ?? 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>
+  );
+
+  const visibleShipments = shipments.slice(0, 6);
+
   return (
     <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-slate-500">Resumen del día</p>
+        <p className="text-slate-500">Resumen de envíos</p>
       </div>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard
-          title="Rutas Activas"
-          value={stats?.activeRoutes || 0}
-          subtitle={`de ${stats?.totalRoutes || 0} totales`}
-          icon={RouteIcon}
+          title="Recibidos"
+          value={statusCounts.received || 0}
+          icon={Package}
+          iconClassName="bg-slate-200"
         />
         <StatCard
-          title="Entregas Hoy"
-          value={stats?.completedToday || 0}
+          title="En ruta"
+          value={statusCounts.in_route || 0}
+          icon={CheckCircle}
+          iconClassName="bg-amber-100"
+        />
+        <StatCard
+          title="Entregados"
+          value={statusCounts.delivered || 0}
           icon={CheckCircle}
           iconClassName="bg-green-100"
         />
         <StatCard
-          title="Pendientes"
-          value={stats?.pendingDeliveries || 0}
-          icon={Package}
-          iconClassName="bg-amber-100"
-        />
-        <StatCard
-          title="Fallidas"
-          value={stats?.failedDeliveries || 0}
+          title="Incidentes"
+          value={statusCounts.incident || 0}
           icon={XCircle}
           iconClassName="bg-red-100"
         />
       </div>
 
-      {/* Active Routes */}
+      {/* Shipments */}
       <div>
         <h2 className="text-lg font-semibold text-slate-900 mb-4">
-          Rutas Activas
+          Envíos recientes
         </h2>
-        {routes.length === 0 ? (
-          <div className="text-center py-8 text-slate-500">
-            No hay rutas activas
-          </div>
+        {error ? (
+          <Card className="p-4 text-sm text-red-600">{error}</Card>
+        ) : shipments.length === 0 ? (
+          <Card className="p-4 text-sm text-slate-500">
+            Aún no hay movimientos
+          </Card>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {routes.map((route) => (
-              <RouteCard
-                key={route.id}
-                route={route}
-                zone={route.zoneId ? getZoneById(route.zoneId) : undefined}
-                driver={route.driverId ? getUserById(route.driverId) : undefined}
-                onView={() => {}}
-              />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {visibleShipments.map((shipment) => (
+              <Card key={shipment.id} className="p-4 space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-mono text-sm text-slate-700">
+                    {shipment.tracking || shipment.id}
+                  </span>
+                  <StatusBadge status={shipment.status} />
+                </div>
+                <div className="text-xs text-slate-500 space-y-1">
+                  {shipment.city && <p>{shipment.city}</p>}
+                  {shipment.addressNorm || shipment.addressRaw ? (
+                    <p>{shipment.addressNorm || shipment.addressRaw}</p>
+                  ) : null}
+                </div>
+              </Card>
             ))}
           </div>
         )}
