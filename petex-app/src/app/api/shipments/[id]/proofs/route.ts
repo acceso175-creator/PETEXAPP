@@ -64,10 +64,7 @@ const mapProof = (row: unknown) => {
   };
 };
 
-export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: Request, context: any) {
   const supabase = getSupabaseClient();
 
   if (!supabase) {
@@ -80,7 +77,7 @@ export async function GET(
     );
   }
 
-  const { id } = params;
+  const { id } = context.params;
 
   const { data, error } = await supabase
     .from('delivery_proofs')
