@@ -189,6 +189,10 @@ export default function LoginPage() {
               Se corrigió carga de perfiles/rutas usando sesión SSR (evita listas
               vacías por RLS).
             </li>
+            <li>
+              Se corrigió compatibilidad de cookies SSR en Next 15 para evitar
+              fallos de build.
+            </li>
           </ul>
         </div>
 
