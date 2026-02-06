@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -22,6 +22,7 @@ import {
   User,
 } from 'lucide-react';
 import { useAuth } from '@/state';
+import { toast } from 'sonner';
 
 const navItems = [
   { href: '/app', label: 'Inicio', icon: Home },
@@ -33,7 +34,14 @@ const navItems = [
 
 export function DriverNav({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    toast.success('Sesión cerrada');
+    router.push('/login');
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
@@ -61,7 +69,7 @@ export function DriverNav({ children }: { children: React.ReactNode }) {
               <p className="text-sm font-medium">{user?.name}</p>
               <p className="text-xs text-slate-500">Driver</p>
             </div>
-            <DropdownMenuItem onClick={() => logout()}>
+            <DropdownMenuItem onClick={handleLogout}>
               <LogOut className="h-4 w-4 mr-2" />
               Cerrar sesión
             </DropdownMenuItem>

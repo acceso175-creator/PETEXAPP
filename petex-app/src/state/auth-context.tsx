@@ -4,14 +4,24 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import type { User, UserRole } from '@/types';
 import * as authService from '@/services/auth.service';
 
+type AuthActionResult = {
+  success: boolean;
+  user?: User;
+  error?: string;
+  requiresEmailConfirmation?: boolean;
+};
+
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  loginWithPhone: (phone: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<AuthActionResult>;
+  signup: (name: string, email: string, password: string) => Promise<AuthActionResult>;
+  loginWithPhone: (phone: string, password: string) => Promise<AuthActionResult>;
   logout: () => Promise<void>;
-  quickLogin: (role: UserRole) => Promise<{ success: boolean; error?: string }>;
+  quickLogin: (role: UserRole) => Promise<AuthActionResult>;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
+  resetPassword: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   hasRole: (role: UserRole) => boolean;
 }
 
@@ -22,7 +32,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session on mount
     const checkSession = async () => {
       try {
         const currentUser = await authService.getCurrentUser();
@@ -43,9 +52,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await authService.login({ email, password });
       if (response.success && response.user) {
         setUser(response.user);
-        return { success: true };
       }
-      return { success: false, error: response.error };
+      return response;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const signup = useCallback(async (name: string, email: string, password: string) => {
+    setIsLoading(true);
+    try {
+      const response = await authService.signup({ name, email, password });
+      if (response.success && response.user) {
+        setUser(response.user);
+      }
+      return response;
     } finally {
       setIsLoading(false);
     }
@@ -57,9 +78,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await authService.login({ phone, password });
       if (response.success && response.user) {
         setUser(response.user);
-        return { success: true };
       }
-      return { success: false, error: response.error };
+      return response;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const requestPasswordReset = useCallback(async (email: string) => {
+    setIsLoading(true);
+    try {
+      return await authService.requestPasswordReset(email);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const resetPassword = useCallback(async (email: string, password: string) => {
+    setIsLoading(true);
+    try {
+      return await authService.resetPassword(email, password);
     } finally {
       setIsLoading(false);
     }
@@ -78,12 +116,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const quickLogin = useCallback(async (role: UserRole) => {
     setIsLoading(true);
     try {
-      const response = await authService.quickLogin(role);
+      const response = await authService.quickLogin(role === 'ops' ? 'admin' : role);
       if (response.success && response.user) {
         setUser(response.user);
-        return { success: true };
       }
-      return { success: false, error: response.error };
+      return response;
     } finally {
       setIsLoading(false);
     }
@@ -100,9 +137,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         isAuthenticated: !!user,
         login,
+        signup,
         loginWithPhone,
         logout,
         quickLogin,
+        requestPasswordReset,
+        resetPassword,
         hasRole,
       }}
     >
@@ -119,7 +159,6 @@ export function useAuth() {
   return context;
 }
 
-// Hook for protected routes
 export function useRequireAuth(requiredRole?: UserRole) {
   const { user, isLoading, isAuthenticated } = useAuth();
 
