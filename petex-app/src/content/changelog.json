@@ -7,7 +7,8 @@
       "Se creó panel Admin Usuarios para listar perfiles y cambiar roles de forma segura.",
       "El cambio de rol ahora pasa por un endpoint backend protegido con validación de admin.",
       "Se añadieron tablas de rutas y paradas para drivers con reglas de acceso por rol.",
-      "Inicio de driver ahora muestra ‘Mi ruta de hoy’ con paradas ordenadas y estado actual."
+      "Inicio de driver ahora muestra ‘Mi ruta de hoy’ con paradas ordenadas y estado actual.",
+      "Se corrigió importación/parseo de status para evitar fallos de build por tipos."
     ]
   },
   {

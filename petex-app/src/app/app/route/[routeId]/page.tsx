@@ -6,13 +6,21 @@ import { Card } from '@/components/ui/card';
 import { LoadingScreen } from '@/components/ui/loading-spinner';
 import { getSupabaseClient, supabaseConfigError } from '@/lib/supabase/client';
 
+const STOP_STATUS = ['pending', 'in_progress', 'delivered', 'failed', 'cancelled'] as const;
+type StopStatus = typeof STOP_STATUS[number];
+
 type StopDetail = {
   id: string;
   stop_order: number;
   recipient_name: string | null;
   address: string | null;
-  status: string;
+  status: StopStatus;
 };
+
+function parseStopStatus(v: unknown): StopStatus {
+  const s = String(v ?? '').trim().toLowerCase();
+  return (STOP_STATUS as readonly string[]).includes(s) ? (s as StopStatus) : 'pending';
+}
 
 export default function DriverRouteDetailPage() {
   const params = useParams<{ routeId: string }>();
@@ -41,7 +49,15 @@ export default function DriverRouteDetailPage() {
           .order('stop_order', { ascending: true });
 
         if (stopsError) throw stopsError;
-        setStops((data ?? []) as StopDetail[]);
+        setStops(
+          (data ?? []).map((stop) => ({
+            id: String(stop.id),
+            stop_order: Number(stop.stop_order ?? 0),
+            recipient_name: stop.recipient_name ? String(stop.recipient_name) : null,
+            address: stop.address ? String(stop.address) : null,
+            status: parseStopStatus(stop.status),
+          }))
+        );
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar la ruta');
       } finally {

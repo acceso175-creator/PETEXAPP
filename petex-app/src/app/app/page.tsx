@@ -10,10 +10,16 @@ import { getSupabaseClient, supabaseConfigError } from '@/lib/supabase/client';
 import { useAuth } from '@/state';
 import { Route as RouteIcon, MapPin, ChevronRight } from 'lucide-react';
 
+const ROUTE_STATUS = ['assigned', 'in_progress', 'completed', 'cancelled'] as const;
+type RouteStatus = typeof ROUTE_STATUS[number];
+
+const STOP_STATUS = ['pending', 'in_progress', 'delivered', 'failed', 'cancelled'] as const;
+type StopStatus = typeof STOP_STATUS[number];
+
 type DriverRoute = {
   id: string;
   date: string;
-  status: string;
+  status: RouteStatus;
   notes: string | null;
 };
 
@@ -22,8 +28,18 @@ type DriverStop = {
   stop_order: number;
   recipient_name: string | null;
   address: string | null;
-  status: string;
+  status: StopStatus;
 };
+
+function parseRouteStatus(v: unknown): RouteStatus {
+  const s = String(v ?? '').trim().toLowerCase();
+  return (ROUTE_STATUS as readonly string[]).includes(s) ? (s as RouteStatus) : 'assigned';
+}
+
+function parseStopStatus(v: unknown): StopStatus {
+  const s = String(v ?? '').trim().toLowerCase();
+  return (STOP_STATUS as readonly string[]).includes(s) ? (s as StopStatus) : 'pending';
+}
 
 const todayLocalIso = () => {
   const now = new Date();
@@ -73,7 +89,12 @@ export default function DriverHomePage() {
           return;
         }
 
-        setRoute(routeData as DriverRoute);
+        setRoute({
+          id: String(routeData.id),
+          date: String(routeData.date),
+          notes: routeData.notes ? String(routeData.notes) : null,
+          status: parseRouteStatus(routeData.status),
+        });
 
         const { data: stopsData, error: stopsError } = await supabase
           .from('route_stops')
@@ -85,7 +106,15 @@ export default function DriverHomePage() {
           throw stopsError;
         }
 
-        setStops((stopsData ?? []) as DriverStop[]);
+        setStops(
+          (stopsData ?? []).map((stop) => ({
+            id: String(stop.id),
+            stop_order: Number(stop.stop_order ?? 0),
+            recipient_name: stop.recipient_name ? String(stop.recipient_name) : null,
+            address: stop.address ? String(stop.address) : null,
+            status: parseStopStatus(stop.status),
+          }))
+        );
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar tu ruta de hoy');
       } finally {
