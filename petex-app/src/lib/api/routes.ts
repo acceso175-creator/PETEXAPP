@@ -1,8 +1,7 @@
-import { getSupabaseClient } from '@/lib/supabase/client';
+import { supabase } from '@/lib/supabase/client';
 import type { Route, RouteStop } from '@/lib/types/domain';
 
 export async function listRoutes(): Promise<Route[]> {
-  const supabase = getSupabaseClient();
   const { data, error } = await supabase.from('routes').select('*');
 
   if (error) {
@@ -13,7 +12,6 @@ export async function listRoutes(): Promise<Route[]> {
 }
 
 export async function getRoute(id: string): Promise<Route> {
-  const supabase = getSupabaseClient();
   const { data, error } = await supabase.from('routes').select('*').eq('id', id).single();
 
   if (error) {
@@ -24,7 +22,6 @@ export async function getRoute(id: string): Promise<Route> {
 }
 
 export async function listRouteStops(routeId: string): Promise<RouteStop[]> {
-  const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('route_stops')
     .select('*')

@@ -39,51 +39,9 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [signupName, setSignupName] = useState('');
-  const [signupEmail, setSignupEmail] = useState('');
-  const [signupPassword, setSignupPassword] = useState('');
-  const [changelog, setChangelog] = useState<ChangelogItem[]>([]);
-  const [notesLoaded, setNotesLoaded] = useState(false);
-  const [health, setHealth] = useState<SupabaseHealthCheck | null>(null);
-
-  useEffect(() => {
-    if (!isLoading && isAuthenticated) {
-      router.push(getDashboardByRole(user?.role));
-    }
-  }, [isLoading, isAuthenticated, user, router]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    import('@/content/changelog.json')
-      .then((mod) => {
-        if (!isMounted) return;
-        const data = (mod.default ?? []) as ChangelogItem[];
-        const sortedData = [...data].sort((a, b) => b.date.localeCompare(a.date));
-        setChangelog(sortedData);
-      })
-      .catch(() => {
-        if (!isMounted) return;
-        setChangelog([]);
-      })
-      .finally(() => {
-        if (!isMounted) return;
-        setNotesLoaded(true);
-      });
-
-    if (process.env.NODE_ENV !== 'production') {
-      getSupabaseHealthCheck().then((result) => {
-        if (!isMounted) return;
-        setHealth(result);
-      });
-    }
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const latestItem = useMemo(() => changelog[0] ?? null, [changelog]);
+  const buildId = process.env.NEXT_PUBLIC_APP_BUILD_ID || 'local';
+  const buildContext = process.env.NEXT_PUBLIC_NETLIFY_CONTEXT || 'local';
+  const buildTime = process.env.NEXT_PUBLIC_BUILD_TIME || 'local';
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -300,76 +258,37 @@ export default function LoginPage() {
               </Button>
             </div>
           </div>
+        </div>
 
-          <div className="mt-4 rounded-lg bg-slate-50 p-3">
-            <p className="text-center text-xs text-slate-500">
-              <strong>Demo:</strong> carlos@petex.mx / admin123
-            </p>
-          </div>
-        </Card>
+        {/* Credentials hint */}
+        <div className="mt-4 p-3 bg-slate-50 rounded-lg">
+          <p className="text-xs text-slate-500 text-center">
+            <strong>Demo:</strong> carlos@petex.mx / admin123
+          </p>
+        </div>
 
-        <Card className="h-fit p-6 sm:p-8">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-slate-900">Resumen de actualización</p>
-              <p className="text-xs text-slate-500">Codex Summary</p>
-            </div>
-            <Clock3 className="h-4 w-4 text-orange-600" />
-          </div>
+        <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+          <p className="text-xs font-semibold text-slate-700">
+            Resumen de actualización
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] text-slate-500">
+            <li>Marcador de build automático en Netlify.</li>
+            <li>
+              Se corrigió carga de perfiles/rutas usando sesión SSR (evita listas
+              vacías por RLS).
+            </li>
+            <li>
+              Se corrigió compatibilidad de cookies SSR en Next 15 para evitar
+              fallos de build.
+            </li>
+          </ul>
+        </div>
 
-          <div className="mt-4">
-            <p className="text-base font-semibold text-slate-900">{latestItem?.title ?? 'Sin datos recientes'}</p>
-            <p className="text-xs text-slate-500">
-              {latestItem?.date
-                ? new Date(latestItem.date).toLocaleDateString('es-MX', { dateStyle: 'long' })
-                : 'Fecha no disponible'}
-            </p>
-          </div>
-
-          <div className="mt-4 space-y-2">
-            {latestItem?.highlights?.length ? (
-              latestItem.highlights.map((highlight) => (
-                <div key={highlight} className="flex items-start gap-2 text-sm text-slate-700">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-orange-600" />
-                  <span>{highlight}</span>
-                </div>
-              ))
-            ) : notesLoaded ? (
-              <p className="text-sm text-slate-500">Sin actualizaciones recientes.</p>
-            ) : (
-              <p className="text-sm text-slate-400">Cargando resumen...</p>
-            )}
-          </div>
-
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="mt-5 w-full">Ver historial</Button>
-            </DialogTrigger>
-            <DialogContent className="max-h-[80vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Historial de actualizaciones</DialogTitle>
-                <DialogDescription>Últimos cambios aplicados al acceso y seguridad.</DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-4">
-                {changelog.slice(0, 10).map((item) => (
-                  <Card key={`${item.date}-${item.title}`} className="border p-4">
-                    <p className="text-sm font-semibold text-slate-900">{item.title}</p>
-                    <p className="text-xs text-slate-500">
-                      {new Date(item.date).toLocaleDateString('es-MX', { dateStyle: 'long' })}
-                    </p>
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
-                      {item.highlights.map((highlight) => (
-                        <li key={highlight}>{highlight}</li>
-                      ))}
-                    </ul>
-                  </Card>
-                ))}
-              </div>
-            </DialogContent>
-          </Dialog>
-        </Card>
-      </div>
+        <footer className="mt-6 text-center text-[11px] text-slate-400">
+          <span className="font-medium">Build:</span> {buildId} |{' '}
+          {buildContext} | {buildTime}
+        </footer>
+      </Card>
     </div>
   );
 }
