@@ -1,56 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const getAccessTokenFromCookies = (cookieHeader: string | null) => {
-  if (!cookieHeader) return null;
-
-  const rawCookies = cookieHeader
-    .split(';')
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => {
-      const idx = part.indexOf('=');
-      if (idx === -1) return [part, ''] as const;
-      return [part.slice(0, idx), decodeURIComponent(part.slice(idx + 1))] as const;
-    });
-
-  const cookieMap = new Map(rawCookies);
-
-  const directAuthCookie = [...cookieMap.entries()].find(([name]) =>
-    name.startsWith('sb-') && name.endsWith('-auth-token')
-  );
-
-  if (directAuthCookie?.[1]) {
-    try {
-      const parsed = JSON.parse(directAuthCookie[1]);
-      if (Array.isArray(parsed) && typeof parsed[0] === 'string' && parsed[0]) {
-        return parsed[0];
-      }
-    } catch {
-      // continue fallback
-    }
-  }
-
-  const chunkedAuthCookies = [...cookieMap.entries()]
-    .filter(([name]) => /sb-.*-auth-token\.\d+$/.test(name))
-    .sort((a, b) => Number(a[0].split('.').pop()) - Number(b[0].split('.').pop()))
-    .map(([, value]) => value)
-    .join('');
-
-  if (chunkedAuthCookies) {
-    try {
-      const parsed = JSON.parse(chunkedAuthCookies);
-      if (Array.isArray(parsed) && typeof parsed[0] === 'string' && parsed[0]) {
-        return parsed[0];
-      }
-    } catch {
-      return null;
-    }
-  }
-
-  return null;
-};
-
 export async function GET(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -63,13 +13,11 @@ export async function GET(request: Request) {
     );
   }
 
-  const authHeader = request.headers.get('authorization');
-  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  const cookieToken = getAccessTokenFromCookies(request.headers.get('cookie'));
-  const token = bearerToken || cookieToken;
+  const auth = request.headers.get('authorization') || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
 
   if (!token) {
-    return NextResponse.json({ error: 'Sesión no encontrada' }, { status: 401 });
+    return NextResponse.json({ error: 'Token Bearer requerido' }, { status: 401 });
   }
 
   const authClient = createClient(supabaseUrl, supabaseAnonKey, {

@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { LoadingScreen } from '@/components/ui/loading-spinner';
 import {
   Select,
@@ -24,26 +26,40 @@ type Profile = {
 const roleOptions: UserRole[] = ['admin', 'driver', 'ops'];
 
 export default function AdminUsersPage() {
+  const router = useRouter();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [changingId, setChangingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [noSession, setNoSession] = useState(false);
 
-  const loadProfiles = async () => {
+  const getAccessToken = useCallback(async () => {
+    if (supabaseConfigError) {
+      throw new Error('Supabase no está configurado en este entorno.');
+    }
+
+    const supabase = getSupabaseClient();
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+
+    if (!accessToken) {
+      setNoSession(true);
+      return null;
+    }
+
+    setNoSession(false);
+    return accessToken;
+  }, []);
+
+  const loadProfiles = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
 
     try {
-      if (supabaseConfigError) {
-        throw new Error('Supabase no está configurado en este entorno.');
-      }
-
-      const supabase = getSupabaseClient();
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData.session?.access_token;
-
+      const accessToken = await getAccessToken();
       if (!accessToken) {
-        throw new Error('No hay sesión activa. Vuelve a iniciar sesión.');
+        setProfiles([]);
+        return;
       }
 
       const response = await fetch('/api/admin/users', {
@@ -66,26 +82,18 @@ export default function AdminUsersPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [getAccessToken]);
 
   useEffect(() => {
     loadProfiles();
-  }, []);
+  }, [loadProfiles]);
 
   const handleRoleChange = async (profileId: string, newRole: UserRole) => {
-    if (supabaseConfigError) {
-      toast.error('Falta configuración de Supabase para cambiar roles.');
-      return;
-    }
-
     setChangingId(profileId);
     try {
-      const supabase = getSupabaseClient();
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData.session?.access_token;
-
+      const accessToken = await getAccessToken();
       if (!accessToken) {
-        toast.error('Tu sesión expiró. Inicia sesión nuevamente.');
+        toast.error('No hay sesión activa. Vuelve a iniciar sesión.');
         return;
       }
 
@@ -114,6 +122,22 @@ export default function AdminUsersPage() {
 
   if (isLoading) {
     return <LoadingScreen message="Cargando perfiles..." />;
+  }
+
+  if (noSession) {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8">
+        <Card className="max-w-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm text-amber-800">No hay sesión activa.</p>
+          <p className="mt-1 text-xs text-amber-700">
+            Inicia sesión con una cuenta admin para gestionar usuarios.
+          </p>
+          <Button className="mt-3" onClick={() => router.push('/login')}>
+            Ir a login
+          </Button>
+        </Card>
+      </div>
+    );
   }
 
   return (
