@@ -1,161 +1,127 @@
-// Driver route page
-'use client';
+import { redirect } from 'next/navigation';
+import type { Route, Stop } from '@/types';
+import DriverRouteClient from './route-client';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-import { useEffect, useState } from 'react';
-import { useAuth } from '@/state';
-import { StopCard } from '@/components/domain/stop-card';
-import { EvidenceModal } from '@/components/domain/evidence-modal';
-import { MapPlaceholder } from '@/components/domain/map-placeholder';
-import { LoadingScreen } from '@/components/ui/loading-spinner';
-import { getDriverTodayRoute, getRouteStops, updateStopStatus } from '@/services/routes.service';
-import { createProof } from '@/services/packages.service';
-import { getPackageById } from '@/lib/mock-data';
-import { toast } from 'sonner';
-import type { Route, Stop, Package, MapMarker } from '@/types';
+type UnknownRecord = Record<string, unknown>;
 
-export default function DriverRoutePage() {
-  const { user } = useAuth();
-  const [route, setRoute] = useState<Route | null>(null);
-  const [stops, setStops] = useState<Stop[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [evidenceModal, setEvidenceModal] = useState<{
-    open: boolean;
-    stop?: Stop;
-    pkg?: Package;
-  }>({ open: false });
+const isRecord = (value: unknown): value is UnknownRecord =>
+  typeof value === 'object' && value !== null;
 
-  useEffect(() => {
-    const loadData = async () => {
-      if (!user) return;
-      try {
-        const routeData = await getDriverTodayRoute(user.id);
-        setRoute(routeData);
-        if (routeData) {
-          const stopsData = await getRouteStops(routeData.id);
-          setStops(stopsData);
-        }
-      } catch (error) {
-        console.error('Error loading route:', error);
-      } finally {
-        setIsLoading(false);
-      }
+const getString = (row: UnknownRecord, key: string, fallback = '') =>
+  typeof row[key] === 'string' ? row[key] : row[key] != null ? String(row[key]) : fallback;
+
+const getNumber = (row: UnknownRecord, key: string, fallback = 0) =>
+  typeof row[key] === 'number' ? row[key] : fallback;
+
+function mapRoute(row: unknown): Route {
+  if (!isRecord(row)) {
+    return {
+      id: '',
+      name: 'Ruta',
+      dateISO: new Date().toISOString().split('T')[0],
+      zoneId: '',
+      status: 'active',
+      progressPct: 0,
+      totalStops: 0,
+      completedStops: 0,
+      createdAt: new Date().toISOString(),
     };
-    loadData();
-  }, [user]);
-
-  const handleMarkDelivered = async (stop: Stop, pkg: Package) => {
-    setEvidenceModal({ open: true, stop, pkg });
-  };
-
-  const handleConfirmDelivery = async (data: { photoUrl?: string; lat: number; lng: number }) => {
-    if (!evidenceModal.stop || !evidenceModal.pkg) return;
-
-    try {
-      await createProof({
-        packageId: evidenceModal.pkg.id,
-        stopId: evidenceModal.stop.id,
-        photoUrl: data.photoUrl,
-        lat: data.lat,
-        lng: data.lng,
-      });
-      await updateStopStatus(evidenceModal.stop.id, 'delivered');
-
-      setStops((prev) =>
-        prev.map((s) =>
-          s.id === evidenceModal.stop?.id
-            ? { ...s, status: 'delivered' as const, deliveredAt: new Date().toISOString() }
-            : s
-        )
-      );
-      toast.success('Entrega confirmada');
-    } catch (error) {
-      toast.error('Error al confirmar entrega');
-    } finally {
-      setEvidenceModal({ open: false });
-    }
-  };
-
-  const handleMarkFailed = async (stop: Stop) => {
-    try {
-      await updateStopStatus(stop.id, 'failed', 'No especificado');
-      setStops((prev) =>
-        prev.map((s) =>
-          s.id === stop.id ? { ...s, status: 'failed' as const } : s
-        )
-      );
-      toast.success('Parada marcada como fallida');
-    } catch (error) {
-      toast.error('Error al actualizar parada');
-    }
-  };
-
-  if (isLoading) {
-    return <LoadingScreen message="Cargando ruta..." />;
   }
 
-  if (!route) {
-    return (
-      <div className="p-4 text-center">
-        <p className="text-slate-500">No tienes ruta asignada hoy</p>
-      </div>
-    );
+  return {
+    id: getString(row, 'id'),
+    name: getString(row, 'name', 'Ruta'),
+    dateISO:
+      getString(row, 'date_iso') ||
+      getString(row, 'dateISO') ||
+      getString(row, 'date', new Date().toISOString().split('T')[0]),
+    zoneId: getString(row, 'zone_id') || getString(row, 'zoneId'),
+    driverId: getString(row, 'driver_id') || getString(row, 'driverId') || undefined,
+    status: getString(row, 'status', 'active'),
+    progressPct: getNumber(row, 'progress_pct', getNumber(row, 'progressPct')),
+    totalStops: getNumber(row, 'total_stops', getNumber(row, 'totalStops')),
+    completedStops: getNumber(row, 'completed_stops', getNumber(row, 'completedStops')),
+    createdAt: getString(row, 'created_at', new Date().toISOString()),
+  };
+}
+
+function mapStop(row: unknown, routeId: string): Stop {
+  if (!isRecord(row)) {
+    return {
+      id: '',
+      routeId,
+      packageId: '',
+      order: 0,
+      status: 'pending',
+    };
   }
 
-  const markers: MapMarker[] = stops
-    .map((stop) => {
-      const pkg = getPackageById(stop.packageId);
-      if (!pkg || !pkg.lat || !pkg.lng) return null;
-      return {
-        id: stop.id,
-        lat: pkg.lat,
-        lng: pkg.lng,
-        label: String(stop.order),
-        type: 'stop' as const,
-        status: stop.status,
-      };
-    })
-    .filter(Boolean) as MapMarker[];
+  const status = getString(row, 'status', 'pending');
+
+  return {
+    id: getString(row, 'id'),
+    routeId: getString(row, 'route_id') || getString(row, 'routeId', routeId),
+    packageId:
+      getString(row, 'delivery_id') ||
+      getString(row, 'package_id') ||
+      getString(row, 'packageId'),
+    order: getNumber(row, 'order', getNumber(row, 'stop_order', 0)),
+    status: status === 'delivered' || status === 'failed' ? status : 'pending',
+    deliveredAt: getString(row, 'delivered_at') || undefined,
+    failureReason: getString(row, 'failure_reason') || undefined,
+    notes: getString(row, 'notes') || undefined,
+  };
+}
+
+export default async function DriverRoutePage() {
+  const supabase = createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect('/login');
+  }
+
+  let errorMessage: string | null = null;
+  let route: Route | null = null;
+  let stops: Stop[] = [];
+
+  const { data: routesData, error: routeError } = await supabase
+    .from('routes')
+    .select('*')
+    .eq('driver_id', user.id)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (routeError) {
+    errorMessage = `Error al cargar ruta: ${routeError.message}`;
+  } else if (routesData && routesData.length > 0) {
+    route = mapRoute(routesData[0]);
+  }
+
+  if (route && !errorMessage) {
+    const { data: stopsData, error: stopsError } = await supabase
+      .from('route_stops')
+      .select('*')
+      .eq('route_id', route.id)
+      .order('order', { ascending: true });
+
+    if (stopsError) {
+      errorMessage = `Error al cargar paradas: ${stopsError.message}`;
+    } else {
+      stops = (stopsData ?? []).map((stopRow) => mapStop(stopRow, route!.id)).filter((stop) => stop.id);
+    }
+  }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-7rem)]">
-      {/* Map */}
-      <MapPlaceholder
-        markers={markers}
-        className="h-48 flex-shrink-0"
-        showControls={false}
-      />
-
-      {/* Stops List */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        <h2 className="font-semibold text-slate-900">
-          {route.name} - {stops.length} paradas
-        </h2>
-        {stops.map((stop, idx) => {
-          const pkg = getPackageById(stop.packageId);
-          if (!pkg) return null;
-          return (
-            <StopCard
-              key={stop.id}
-              stop={stop}
-              pkg={pkg}
-              order={stop.order}
-              isFirst={idx === 0}
-              isLast={idx === stops.length - 1}
-              onOpenEvidence={() => handleMarkDelivered(stop, pkg)}
-              onMarkFailed={() => handleMarkFailed(stop)}
-            />
-          );
-        })}
-      </div>
-
-      {/* Evidence Modal */}
-      <EvidenceModal
-        open={evidenceModal.open}
-        onClose={() => setEvidenceModal({ open: false })}
-        onConfirm={handleConfirmDelivery}
-        packageTracking={evidenceModal.pkg?.tracking || ''}
-        recipientName={evidenceModal.pkg?.recipientName}
-      />
-    </div>
+    <DriverRouteClient
+      initialRoute={route}
+      initialStops={stops}
+      errorMessage={errorMessage}
+      actorUserId={user.id}
+    />
   );
 }
