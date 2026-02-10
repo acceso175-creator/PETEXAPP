@@ -301,6 +301,7 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {/* Credenciales hint */}
           <div className="mt-4 rounded-lg bg-slate-50 p-3">
             <p className="text-center text-xs text-slate-500">
               <strong>Demo:</strong> carlos@petex.mx / admin123
