@@ -9,7 +9,8 @@
       "Se añadieron tablas de rutas y paradas para drivers con reglas de acceso por rol.",
       "Inicio de driver ahora muestra ‘Mi ruta de hoy’ con paradas ordenadas y estado actual.",
       "Se corrigió importación/parseo de status para evitar fallos de build por tipos.",
-      "Se corrigió la sintaxis JSX en login para evitar fallo de build por tags desbalanceados."
+      "Se corrigió la sintaxis JSX en login para evitar fallo de build por tags desbalanceados.",
+      "Se corrigió /admin/users para listar perfiles vía endpoint backend admin y mostrar errores reales."
     ]
   },
   {

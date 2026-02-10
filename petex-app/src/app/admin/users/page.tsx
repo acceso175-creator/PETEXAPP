@@ -27,26 +27,42 @@ export default function AdminUsersPage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [changingId, setChangingId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const loadProfiles = async () => {
     setIsLoading(true);
+    setErrorMessage(null);
+
     try {
       if (supabaseConfigError) {
-        toast.error('Supabase no está configurado en este entorno.');
-        setProfiles([]);
-        return;
+        throw new Error('Supabase no está configurado en este entorno.');
       }
 
       const supabase = getSupabaseClient();
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id,email,full_name,role')
-        .order('created_at', { ascending: false });
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
 
-      if (error) throw error;
-      setProfiles((data ?? []) as Profile[]);
+      if (!accessToken) {
+        throw new Error('No hay sesión activa. Vuelve a iniciar sesión.');
+      }
+
+      const response = await fetch('/api/admin/users', {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const payload = (await response.json()) as { users?: Profile[]; error?: string };
+      if (!response.ok) {
+        throw new Error(`${response.status}: ${payload.error || 'No se pudieron cargar los usuarios'}`);
+      }
+
+      setProfiles(payload.users ?? []);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudieron cargar los usuarios');
+      const message = error instanceof Error ? error.message : 'No se pudieron cargar los usuarios';
+      setErrorMessage(message);
+      setProfiles([]);
     } finally {
       setIsLoading(false);
     }
@@ -107,6 +123,12 @@ export default function AdminUsersPage() {
         <p className="text-slate-500">Administra roles de acceso de forma segura.</p>
       </div>
 
+      {errorMessage ? (
+        <Card className="mb-4 border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          Error al cargar usuarios: {errorMessage}
+        </Card>
+      ) : null}
+
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -120,8 +142,8 @@ export default function AdminUsersPage() {
             <tbody>
               {profiles.map((profile) => (
                 <tr key={profile.id} className="border-b border-slate-100">
-                  <td className="px-4 py-3 text-slate-800">{profile.email ?? 'Sin correo'}</td>
-                  <td className="px-4 py-3 text-slate-700">{profile.full_name ?? 'Sin nombre'}</td>
+                  <td className="px-4 py-3 text-slate-800">{profile.email ?? '—'}</td>
+                  <td className="px-4 py-3 text-slate-700">{profile.full_name ?? '—'}</td>
                   <td className="px-4 py-3">
                     <Select
                       value={profile.role}
