@@ -188,7 +188,7 @@ export default function LoginPage() {
             <li>Se estabilizó la carga SSR de perfiles y rutas para evitar vacíos por RLS.</li>
             <li>Se corrigió compatibilidad de cookies SSR en Next 15 para evitar fallos de build.</li>
             <li>Se ajustó Netlify para que Header/Redirect checks usen correctamente el plugin de Next.</li>
-            <li>Se tipó el estado de ruta con parseRouteStatus para evitar errores de build en Netlify.</li>
+            <li>Se actualizó el adapter de cookies SSR de Supabase a getAll/setAll para compatibilidad de build en Netlify.</li>
           </ul>
         </div>
 
