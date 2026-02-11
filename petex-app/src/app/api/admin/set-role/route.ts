@@ -8,6 +8,14 @@ interface SetRolePayload {
   role: 'admin' | 'driver';
 }
 
+interface CookieOptions {
+  domain?: string;
+  maxAge?: number;
+  path?: string;
+  sameSite?: 'lax' | 'strict' | 'none';
+  secure?: boolean;
+}
+
 export async function POST(request: Request) {
   const cookieStore = await cookies();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
@@ -20,15 +28,15 @@ export async function POST(request: Request) {
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
-      get(name) {
+      get(name: string) {
         return cookieStore.get(name)?.value;
       },
-      set(name, value, options) {
+      set(name: string, value: string, options: CookieOptions) {
         try {
           cookieStore.set({ name, value, ...options });
         } catch {}
       },
-      remove(name, options) {
+      remove(name: string, options: CookieOptions) {
         try {
           cookieStore.set({ name, value: '', ...options, maxAge: 0 });
         } catch {}

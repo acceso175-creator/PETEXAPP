@@ -43,7 +43,7 @@ function mapProfileToUser(row: unknown): User {
 }
 
 export default async function AdminUsersPage() {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -87,7 +87,7 @@ export default async function AdminUsersPage() {
     );
   }
 
-  const users = (data ?? []).map(mapProfileToUser).filter((userItem) => userItem.id);
+  const users = (data ?? []).map(mapProfileToUser).filter((userItem: User) => userItem.id);
 
   return <AdminUsersClient initialUsers={users} />;
 }
