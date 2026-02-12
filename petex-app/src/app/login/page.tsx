@@ -29,8 +29,8 @@ type ChangelogItem = {
 const MIN_PASSWORD = 8;
 const getDashboardByRole = (role: 'admin' | 'driver' | 'ops' | undefined) => {
   if (role === 'admin') return '/admin';
-  if (role === 'ops') return '/admin';
-  return '/app';
+  if (role === 'driver') return '/app';
+  return '/login';
 };
 
 export default function LoginPage() {
@@ -301,6 +301,7 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {/* Credenciales hint */}
           <div className="mt-4 rounded-lg bg-slate-50 p-3">
             <p className="text-center text-xs text-slate-500">
               <strong>Demo:</strong> carlos@petex.mx / admin123

@@ -1,6 +1,21 @@
 [
   {
     "date": "2026-02-05",
+    "title": "Bloque 4: roles, usuarios y ruta del driver",
+    "highlights": [
+      "Se reforzaron rutas por rol: admin entra a /admin y driver a /app con bloqueos automáticos.",
+      "Se creó panel Admin Usuarios para listar perfiles y cambiar roles de forma segura.",
+      "El cambio de rol ahora pasa por un endpoint backend protegido con validación de admin.",
+      "Se añadieron tablas de rutas y paradas para drivers con reglas de acceso por rol.",
+      "Inicio de driver ahora muestra ‘Mi ruta de hoy’ con paradas ordenadas y estado actual.",
+      "Se corrigió importación/parseo de status para evitar fallos de build por tipos.",
+      "Se corrigió la sintaxis JSX en login para evitar fallo de build por tags desbalanceados.",
+      "Se corrigió /admin/users para listar perfiles vía endpoint backend admin y mostrar errores reales.",
+      "Se hizo /admin/users client-side con token del navegador para funcionar mejor en Deploy Preview."
+    ]
+  },
+  {
+    "date": "2026-02-05",
     "title": "Fix Netlify prerender en /auth/callback",
     "highlights": [
       "Se refactorizó /auth/callback a página server con Suspense para cumplir Next.js build.",

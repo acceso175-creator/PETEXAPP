@@ -16,8 +16,10 @@ export default function HomePage() {
         // Redirect based on role
         if (user.role === 'admin') {
           router.push('/admin');
-        } else {
+        } else if (user.role === 'driver') {
           router.push('/app');
+        } else {
+          router.push('/login');
         }
       } else {
         router.push('/login');
