@@ -1,6 +1,16 @@
 [
   {
     "date": "2026-02-12",
+    "title": "Fix de cambio de rol en Admin Usuarios (RPC segura)",
+    "highlights": [
+      "Se reemplazó el cambio de rol directo por una función SQL SECURITY DEFINER (admin_set_user_role) que valida sesión, rol admin y roles permitidos (admin, driver, ops).",
+      "El endpoint /api/admin/set-role ahora usa el token Bearer del usuario logueado y ejecuta supabase.rpc con ANON KEY, sin usar service_role para modificar profiles.role.",
+      "Admin /users mantiene Authorization al cambiar rol, refresca la lista después del update y muestra toasts más claros con éxito o causa real del error.",
+      "Se endurecieron mensajes de error para distinguir sesión expirada, permisos insuficientes, rol inválido y usuario objetivo inexistente."
+    ]
+  },
+  {
+    "date": "2026-02-12",
     "title": "Bloque 2 reconstruido: Data Layer real con Supabase",
     "highlights": [
       "Se añadieron migraciones para zones, shipments, deliveries y shipment_events con índices y timestamps para operación real.",
