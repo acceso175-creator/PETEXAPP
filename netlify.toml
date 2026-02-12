@@ -1,5 +1,6 @@
 [build]
   base = "petex-app"
+  publish = ".next"
   command = "npm run build"
 
 [[plugins]]

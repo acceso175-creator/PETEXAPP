@@ -187,7 +187,7 @@ export default function LoginPage() {
             <li>Ahora el login muestra marcador de build automático en Netlify.</li>
             <li>Se estabilizó la carga SSR de perfiles y rutas para evitar vacíos por RLS.</li>
             <li>Se corrigió compatibilidad de cookies SSR en Next 15 para evitar fallos de build.</li>
-            <li>Se fijó Netlify para subcarpeta: base directory = petex-app y publish lo maneja plugin-nextjs.</li>
+            <li>Se corrigió Netlify: publish por defecto estaba chocando con base y se fijó explícitamente a .next.</li>
             <li>Se actualizó el wrapper SSR de Supabase a cookies getAll/setAll (nuevo @supabase/ssr) para destrabar el build en Netlify.</li>
           </ul>
         </div>
