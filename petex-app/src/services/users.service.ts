@@ -1,77 +1,83 @@
-// Users Service - Mock Implementation
-// TODO: Replace with Supabase queries
-
-import type { User } from '@/types';
+import { getSupabaseClient } from '@/lib/supabase/client';
 import { mockUsers } from '@/lib/mock-data';
+import type { User } from '@/types';
 
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const mapUser = (row: Record<string, unknown>): User => ({
+  id: String(row.id ?? ''),
+  name: String(row.full_name ?? row.name ?? 'Sin nombre'),
+  role: (String(row.role ?? 'driver') as User['role']),
+  phone: (row.phone as string | undefined) ?? undefined,
+  email: (row.email as string | undefined) ?? undefined,
+  active: typeof row.active === 'boolean' ? row.active : true,
+  avatarUrl: (row.avatar_url as string | undefined) ?? undefined,
+});
 
-const users = [...mockUsers];
+const fallbackUsers = () => {
+  console.warn('[users.service] fallback explícito a mockUsers (sin conexión o tabla no disponible).');
+  return [...mockUsers];
+};
 
-export async function getUsers(filters?: {
-  role?: string;
-  active?: boolean;
-}): Promise<User[]> {
-  // TODO: Replace with Supabase query
-  await delay(300);
+export async function getUsers(filters?: { role?: string; active?: boolean }): Promise<User[]> {
+  try {
+    const supabase = getSupabaseClient();
+    let query = supabase.from('profiles').select('*');
+    if (filters?.role) query = query.eq('role', filters.role);
+    if (filters?.active !== undefined) query = query.eq('active', filters.active);
 
-  let result = [...users];
-
-  if (filters?.role) {
-    result = result.filter(u => u.role === filters.role);
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data ?? []).map((row) => mapUser(row as Record<string, unknown>));
+  } catch {
+    let result = fallbackUsers();
+    if (filters?.role) result = result.filter((user) => user.role === filters.role);
+    if (filters?.active !== undefined) result = result.filter((user) => user.active === filters.active);
+    return result;
   }
-
-  if (filters?.active !== undefined) {
-    result = result.filter(u => u.active === filters.active);
-  }
-
-  return result;
 }
 
 export async function getUserById(id: string): Promise<User | null> {
-  // TODO: Replace with Supabase query
-  await delay(200);
-  return users.find(u => u.id === id) || null;
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', id).single();
+    if (error) throw error;
+    return mapUser(data as Record<string, unknown>);
+  } catch {
+    return fallbackUsers().find((user) => user.id === id) ?? null;
+  }
 }
 
 export async function getDrivers(activeOnly = true): Promise<User[]> {
-  // TODO: Replace with Supabase query
-  await delay(200);
-  return users.filter(u => u.role === 'driver' && (!activeOnly || u.active));
+  const users = await getUsers({ role: 'driver' });
+  return activeOnly ? users.filter((user) => user.active) : users;
 }
 
-export async function createUser(data: Partial<User>): Promise<User> {
-  // TODO: Replace with Supabase insert + Auth
-  await delay(400);
-
-  const newUser: User = {
-    id: `user-${Date.now()}`,
-    name: data.name || 'Nuevo Usuario',
-    role: data.role || 'driver',
-    email: data.email,
-    phone: data.phone,
-    active: true,
-  };
-
-  users.push(newUser);
-  return newUser;
+export async function createUser(_data: Partial<User>): Promise<User> {
+  throw new Error('Alta de usuarios no soportada desde cliente. Usa Auth Admin API en backend.');
 }
 
 export async function updateUser(id: string, data: Partial<User>): Promise<User | null> {
-  // TODO: Replace with Supabase update
-  await delay(300);
+  const supabase = getSupabaseClient();
+  const payload = {
+    ...(data.email !== undefined ? { email: data.email } : {}),
+    ...(data.name !== undefined ? { full_name: data.name } : {}),
+    ...(data.phone !== undefined ? { phone: data.phone } : {}),
+    ...(data.active !== undefined ? { active: data.active } : {}),
+    ...(data.avatarUrl !== undefined ? { avatar_url: data.avatarUrl } : {}),
+  };
 
-  const index = users.findIndex(u => u.id === id);
-  if (index === -1) return null;
+  const { data: updated, error } = await supabase
+    .from('profiles')
+    .update(payload)
+    .eq('id', id)
+    .select('*')
+    .maybeSingle();
 
-  users[index] = { ...users[index], ...data };
-  return users[index];
+  if (error) throw new Error(`No se pudo actualizar el usuario: ${error.message}`);
+  return updated ? mapUser(updated as Record<string, unknown>) : null;
 }
 
 export async function toggleUserActive(id: string): Promise<User | null> {
-  // TODO: Replace with Supabase update
-  const user = users.find(u => u.id === id);
+  const user = await getUserById(id);
   if (!user) return null;
-
   return updateUser(id, { active: !user.active });
 }
