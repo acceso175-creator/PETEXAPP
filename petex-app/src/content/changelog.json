@@ -1,5 +1,16 @@
 [
   {
+    "date": "2026-02-12",
+    "title": "Bloque 2 reconstruido: Data Layer real con Supabase",
+    "highlights": [
+      "Se añadieron migraciones para zones, shipments, deliveries y shipment_events con índices y timestamps para operación real.",
+      "Se activó RLS usando public.is_admin() y permisos acotados para drivers en envíos, entregas y eventos.",
+      "Los servicios de zonas, usuarios, paquetes, issues y tareas ahora consultan Supabase con un único wrapper getSupabaseClient.",
+      "Admin Zonas, Admin Mapa y Admin Deliveries/[id] consumen datos reales y muestran estados vacíos claros cuando no hay registros.",
+      "Se agregó seed opcional de desarrollo con 1 admin, 1 driver, 1 ruta con stops y datos demo de zonas/envíos/entregas."
+    ]
+  },
+  {
     "date": "2026-02-05",
     "title": "Bloque 4: roles, usuarios y ruta del driver",
     "highlights": [

@@ -313,7 +313,7 @@ export default function LoginPage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-slate-900">Resumen de actualización</p>
-              <p className="text-xs text-slate-500">Codex Summary</p>
+              <p className="text-xs text-slate-500">Codex Summary · Data Layer</p>
             </div>
             <Clock3 className="h-4 w-4 text-orange-600" />
           </div>
@@ -349,7 +349,7 @@ export default function LoginPage() {
             <DialogContent className="max-h-[80vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Historial de actualizaciones</DialogTitle>
-                <DialogDescription>Últimos cambios aplicados al acceso y seguridad.</DialogDescription>
+                <DialogDescription>Últimos cambios aplicados en autenticación, seguridad y capa de datos.</DialogDescription>
               </DialogHeader>
 
               <div className="space-y-4">
