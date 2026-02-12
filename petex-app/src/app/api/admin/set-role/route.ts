@@ -4,12 +4,24 @@ import type { UserRole } from '@/types';
 
 const isAllowedRole = (role: string): role is UserRole => ['admin', 'driver', 'ops'].includes(role);
 
+type RpcRoleResponse = {
+  id: string;
+  role: UserRole;
+};
+
+const mapRpcErrorMessage = (message: string) => {
+  if (message.includes('not authenticated')) return 'Token inválido o sesión expirada.';
+  if (message.includes('only admins can change roles')) return 'Solo un admin puede cambiar roles.';
+  if (message.includes('invalid role')) return 'Rol inválido. Usa admin, driver u ops.';
+  if (message.includes('target user profile not found')) return 'Usuario objetivo no encontrado en perfiles.';
+  return message;
+};
+
 export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
+  if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.json({ error: 'Configuración de Supabase incompleta en el servidor' }, { status: 500 });
   }
 
@@ -25,51 +37,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Datos inválidos. userId y role son obligatorios' }, { status: 400 });
   }
 
-  const authClient = createClient(supabaseUrl, supabaseAnonKey);
-  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: `Bearer ${token}` } },
   });
 
-  const { data: requesterData, error: requesterError } = await authClient.auth.getUser(token);
-  if (requesterError || !requesterData.user) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
-
-  const { data: requesterProfile, error: profileError } = await adminClient
-    .from('profiles')
-    .select('id, role')
-    .eq('id', requesterData.user.id)
-    .single();
-
-  if (profileError || !requesterProfile || requesterProfile.role !== 'admin') {
-    return NextResponse.json({ error: 'Solo un admin puede cambiar roles' }, { status: 403 });
-  }
-
-  const { data: targetProfile, error: targetError } = await adminClient
-    .from('profiles')
-    .select('id, role')
-    .eq('id', body.userId)
-    .single();
-
-  if (targetError || !targetProfile) {
-    return NextResponse.json({ error: 'Usuario objetivo no encontrado' }, { status: 404 });
-  }
-
-  const { error: updateError } = await adminClient
-    .from('profiles')
-    .update({ role: body.role })
-    .eq('id', body.userId);
-
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 400 });
-  }
-
-  console.info('[PETEX][ADMIN] role updated', {
-    actorUserId: requesterData.user.id,
-    targetUserId: body.userId,
-    previousRole: targetProfile.role,
-    newRole: body.role,
+  const { data, error } = await supabase.rpc('admin_set_user_role', {
+    target_user_id: body.userId,
+    new_role: body.role,
   });
 
-  return NextResponse.json({ success: true });
+  if (error) {
+    const message = mapRpcErrorMessage(error.message);
+    const status = message.includes('Solo un admin') ? 403 : message.includes('Token inválido') ? 401 : 400;
+    return NextResponse.json({ error: message }, { status });
+  }
+
+  const updated = Array.isArray(data) ? (data[0] as RpcRoleResponse | undefined) : (data as RpcRoleResponse | null);
+
+  return NextResponse.json({
+    success: true,
+    updatedUser: updated ?? { id: body.userId, role: body.role },
+  });
 }

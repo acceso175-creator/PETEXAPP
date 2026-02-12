@@ -106,15 +106,17 @@ export default function AdminUsersPage() {
         body: JSON.stringify({ userId: profileId, role: newRole }),
       });
 
-      const payload = (await response.json()) as { error?: string };
+      const payload = (await response.json()) as { error?: string; updatedUser?: { id: string; role: UserRole } };
       if (!response.ok) {
         throw new Error(payload.error || 'No se pudo actualizar el rol');
       }
 
-      toast.success('Rol actualizado correctamente');
+      const updatedRole = payload.updatedUser?.role ?? newRole;
+      toast.success(`Rol actualizado a ${updatedRole}`);
       await loadProfiles();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Error al cambiar el rol');
+      const message = error instanceof Error ? error.message : 'Error al cambiar el rol';
+      toast.error(`No se pudo actualizar el rol. ${message}`);
     } finally {
       setChangingId(null);
     }
