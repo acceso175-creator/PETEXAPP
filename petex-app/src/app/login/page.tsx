@@ -187,7 +187,7 @@ export default function LoginPage() {
             <li>Ahora el login muestra marcador de build automático en Netlify.</li>
             <li>Se estabilizó la carga SSR de perfiles y rutas para evitar vacíos por RLS.</li>
             <li>Se corrigió compatibilidad de cookies SSR en Next 15 para evitar fallos de build.</li>
-            <li>Se ajustó Netlify para que Header/Redirect checks usen correctamente el plugin de Next.</li>
+            <li>Se corrigió Netlify: el publish directory ya no puede coincidir con base y lo maneja plugin-nextjs.</li>
             <li>Se actualizó el wrapper SSR de Supabase a cookies getAll/setAll (nuevo @supabase/ssr) para destrabar el build en Netlify.</li>
           </ul>
         </div>

@@ -1,4 +1,5 @@
 [build]
+  # publish is intentionally omitted; @netlify/plugin-nextjs manages Next output paths
   base = "petex-app"
   command = "npm run build"
 

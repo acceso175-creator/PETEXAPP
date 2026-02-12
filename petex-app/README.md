@@ -42,4 +42,7 @@ If you configure builds manually in the Netlify UI, use:
 
 - Base directory: `petex-app`
 - Build command: `npm run build`
-- Publish directory: `.next`
+- Publish directory: **leave empty / not set** (required when using `@netlify/plugin-nextjs`)
+
+> Important: do **not** set Publish directory to `petex-app` (base dir) or repo root.
+> The Next.js Netlify plugin computes the publish/output paths automatically.
