@@ -1,10 +1,6 @@
 [build]
-  # publish is intentionally omitted; @netlify/plugin-nextjs manages Next output paths
   base = "petex-app"
   command = "npm run build"
-
-[images]
-  remote_images = ["https://source.unsplash.com/.*", "https://images.unsplash.com/.*", "https://ext.same-assets.com/.*", "https://ugc.same-assets.com/.*"]
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
