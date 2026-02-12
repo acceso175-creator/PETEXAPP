@@ -13,6 +13,9 @@ const statusConfig: Record<string, { label: string; variant: 'default' | 'second
   delivering: { label: 'En camino', variant: 'default', className: 'bg-amber-500 hover:bg-amber-500' },
   delivered: { label: 'Entregado', variant: 'default', className: 'bg-green-600 hover:bg-green-600' },
   failed: { label: 'Fallido', variant: 'destructive', className: '' },
+  received: { label: 'Recibido', variant: 'secondary', className: 'bg-slate-200 text-slate-700 hover:bg-slate-200' },
+  in_route: { label: 'En ruta', variant: 'default', className: 'bg-amber-500 hover:bg-amber-500' },
+  incident: { label: 'Incidente', variant: 'destructive', className: '' },
 
   // Route statuses
   draft: { label: 'Borrador', variant: 'outline', className: 'border-slate-400 text-slate-600' },
