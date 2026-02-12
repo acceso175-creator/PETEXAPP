@@ -18,6 +18,9 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const buildId = process.env.NEXT_PUBLIC_APP_BUILD_ID || 'local';
+  const buildContext = process.env.NEXT_PUBLIC_NETLIFY_CONTEXT || 'local';
+  const buildTime = process.env.NEXT_PUBLIC_BUILD_TIME || 'local';
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -175,6 +178,24 @@ export default function LoginPage() {
             <strong>Demo:</strong> carlos@petex.mx / admin123
           </p>
         </div>
+
+        <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+          <p className="text-xs font-semibold text-slate-700">
+            Resumen de actualización
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] text-slate-500">
+            <li>Ahora el login muestra marcador de build automático en Netlify.</li>
+            <li>Se estabilizó la carga SSR de perfiles y rutas para evitar vacíos por RLS.</li>
+            <li>Se corrigió compatibilidad de cookies SSR en Next 15 para evitar fallos de build.</li>
+            <li>Se resolvieron conflictos del PR y se dejó Netlify con base=petex-app + publish=.next para evitar el error publish=base.</li>
+            <li>Se actualizó el wrapper SSR de Supabase a cookies getAll/setAll (nuevo @supabase/ssr) para destrabar el build en Netlify.</li>
+          </ul>
+        </div>
+
+        <footer className="mt-6 text-center text-[11px] text-slate-400">
+          <span className="font-medium">Build:</span> {buildId} |{' '}
+          {buildContext} | {buildTime}
+        </footer>
       </Card>
     </div>
   );

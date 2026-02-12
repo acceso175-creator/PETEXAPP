@@ -1,136 +1,93 @@
-// Admin users page
-'use client';
-
-import { useEffect, useState } from 'react';
+import { redirect } from 'next/navigation';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { LoadingScreen } from '@/components/ui/loading-spinner';
-import { getUsers, toggleUserActive } from '@/services/users.service';
-import { Plus, Phone, Mail, MoreVertical } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import AdminUsersClient from './users-client';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { User } from '@/types';
 
-export default function AdminUsersPage() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+type UnknownRecord = Record<string, unknown>;
 
-  useEffect(() => {
-    const loadUsers = async () => {
-      try {
-        const data = await getUsers();
-        setUsers(data);
-      } catch (error) {
-        console.error('Error loading users:', error);
-      } finally {
-        setIsLoading(false);
-      }
+const isRecord = (value: unknown): value is UnknownRecord =>
+  typeof value === 'object' && value !== null;
+
+const getString = (row: UnknownRecord, key: string, fallback = '') =>
+  typeof row[key] === 'string' ? row[key] : row[key] != null ? String(row[key]) : fallback;
+
+const getOptionalString = (row: UnknownRecord, key: string) =>
+  typeof row[key] === 'string' ? row[key] : undefined;
+
+const getBoolean = (row: UnknownRecord, key: string, fallback = false) =>
+  typeof row[key] === 'boolean' ? row[key] : fallback;
+
+function mapProfileToUser(row: unknown): User {
+  if (!isRecord(row)) {
+    return {
+      id: '',
+      name: 'Usuario',
+      role: 'driver',
+      active: true,
     };
-    loadUsers();
-  }, []);
-
-  const handleToggleActive = async (userId: string) => {
-    const updated = await toggleUserActive(userId);
-    if (updated) {
-      setUsers((prev) =>
-        prev.map((u) => (u.id === userId ? updated : u))
-      );
-    }
-  };
-
-  if (isLoading) {
-    return <LoadingScreen message="Cargando usuarios..." />;
   }
 
-  const admins = users.filter((u) => u.role === 'admin');
-  const drivers = users.filter((u) => u.role === 'driver');
-
-  return (
-    <div className="p-4 sm:p-6 lg:p-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Usuarios</h1>
-          <p className="text-slate-500">Gestión de administradores y drivers</p>
-        </div>
-        <Button className="bg-orange-600 hover:bg-orange-700">
-          <Plus className="h-4 w-4 mr-2" />
-          Nuevo Usuario
-        </Button>
-      </div>
-
-      {/* Admins */}
-      <div className="mb-8">
-        <h2 className="text-lg font-semibold mb-4">Administradores</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {admins.map((user) => (
-            <UserCard key={user.id} user={user} onToggleActive={handleToggleActive} />
-          ))}
-        </div>
-      </div>
-
-      {/* Drivers */}
-      <div>
-        <h2 className="text-lg font-semibold mb-4">Drivers</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {drivers.map((user) => (
-            <UserCard key={user.id} user={user} onToggleActive={handleToggleActive} />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
+  return {
+    id: getString(row, 'id'),
+    name:
+      getString(row, 'full_name') ||
+      getString(row, 'name') ||
+      getString(row, 'email', 'Usuario'),
+    role: (getString(row, 'role', 'driver') as User['role']),
+    email: getOptionalString(row, 'email'),
+    phone: getOptionalString(row, 'phone'),
+    active: getBoolean(row, 'is_active', getBoolean(row, 'active', true)),
+    avatarUrl: getOptionalString(row, 'avatar_url'),
+  };
 }
 
-function UserCard({ user, onToggleActive }: { user: User; onToggleActive: (id: string) => void }) {
-  return (
-    <Card className="p-4">
-      <div className="flex items-start gap-3">
-        <Avatar className="h-12 w-12">
-          <AvatarFallback className="bg-orange-100 text-orange-700">
-            {user.name.split(' ').map((n) => n[0]).join('')}
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium truncate">{user.name}</span>
-            <Badge variant={user.active ? 'default' : 'secondary'} className={user.active ? 'bg-green-600' : ''}>
-              {user.active ? 'Activo' : 'Inactivo'}
-            </Badge>
-          </div>
-          <div className="mt-2 space-y-1 text-sm text-slate-500">
-            {user.email && (
-              <div className="flex items-center gap-2">
-                <Mail className="h-3.5 w-3.5" />
-                <span className="truncate">{user.email}</span>
-              </div>
-            )}
-            {user.phone && (
-              <div className="flex items-center gap-2">
-                <Phone className="h-3.5 w-3.5" />
-                <span>{user.phone}</span>
-              </div>
-            )}
-          </div>
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onToggleActive(user.id)}>
-              {user.active ? 'Desactivar' : 'Activar'}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+export default async function AdminUsersPage() {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect('/login');
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('id, role')
+    .eq('id', user.id)
+    .single();
+
+  if (profileError) {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8">
+        <Card className="border-red-200 bg-red-50 p-4 text-red-700">
+          Error al validar permisos: {profileError.message}
+        </Card>
       </div>
-    </Card>
-  );
+    );
+  }
+
+  if (!profile || profile.role !== 'admin') {
+    redirect('/app');
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, name, role, email, phone, is_active, active, avatar_url')
+    .order('full_name', { ascending: true });
+
+  if (error) {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8">
+        <Card className="border-red-200 bg-red-50 p-4 text-red-700">
+          Error al cargar perfiles: {error.message}
+        </Card>
+      </div>
+    );
+  }
+
+  const users = (data ?? []).map(mapProfileToUser).filter((userItem: User) => userItem.id);
+
+  return <AdminUsersClient initialUsers={users} />;
 }

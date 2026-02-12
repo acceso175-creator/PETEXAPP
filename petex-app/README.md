@@ -43,3 +43,6 @@ If you configure builds manually in the Netlify UI, use:
 - Base directory: `petex-app`
 - Build command: `npm run build`
 - Publish directory: `.next`
+
+> Important: do **not** set Publish directory to `petex-app` (base dir) or repo root.
+> For this project, publish must resolve to `.next` under the base directory.

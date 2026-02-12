@@ -21,6 +21,9 @@ const statusConfig: Record<string, { label: string; variant: 'default' | 'second
 
   // Stop statuses
   pending: { label: 'Pendiente', variant: 'outline', className: 'border-amber-400 text-amber-600' },
+  pendiente: { label: 'Pendiente', variant: 'outline', className: 'border-amber-400 text-amber-600' },
+  entregado: { label: 'Entregado', variant: 'default', className: 'bg-green-600 hover:bg-green-600' },
+  fallido: { label: 'Fallido', variant: 'destructive', className: '' },
 
   // Issue statuses
   open: { label: 'Abierto', variant: 'destructive', className: '' },

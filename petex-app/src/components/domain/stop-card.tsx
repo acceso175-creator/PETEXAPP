@@ -32,6 +32,7 @@ interface StopCardProps {
   onOpenEvidence?: () => void;
   isAdmin?: boolean;
   className?: string;
+  isUpdating?: boolean;
 }
 
 export function StopCard({
@@ -48,6 +49,7 @@ export function StopCard({
   onOpenEvidence,
   isAdmin,
   className,
+  isUpdating,
 }: StopCardProps) {
   const isCompleted = stop.status === 'delivered' || stop.status === 'failed';
 
@@ -162,18 +164,20 @@ export function StopCard({
                   variant="default"
                   className="bg-green-600 hover:bg-green-700 flex-1 sm:flex-none"
                   onClick={onOpenEvidence || onMarkDelivered}
+                  disabled={isUpdating}
                 >
                   <Check className="h-4 w-4 mr-1" />
-                  Entregado
+                  Marcar entregado
                 </Button>
                 <Button
                   size="sm"
                   variant="destructive"
                   className="flex-1 sm:flex-none"
                   onClick={onMarkFailed}
+                  disabled={isUpdating}
                 >
                   <X className="h-4 w-4 mr-1" />
-                  Fallido
+                  Marcar fallido
                 </Button>
               </>
             )}
