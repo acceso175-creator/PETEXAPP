@@ -18,15 +18,14 @@ type StopStatus = typeof STOP_STATUS[number];
 
 type DriverRoute = {
   id: string;
-  date: string;
+  route_date: string;
   status: RouteStatus;
-  notes: string | null;
 };
 
 type DriverStop = {
   id: string;
   stop_order: number;
-  recipient_name: string | null;
+  title: string | null;
   address: string | null;
   status: StopStatus;
 };
@@ -72,9 +71,9 @@ export default function DriverHomePage() {
 
         const { data: routeData, error: routeError } = await supabase
           .from('routes')
-          .select('id,date,status,notes')
-          .eq('driver_id', user.id)
-          .eq('date', today)
+          .select('id,route_date,status')
+          .eq('driver_profile_id', user.id)
+          .eq('route_date', today)
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -91,14 +90,13 @@ export default function DriverHomePage() {
 
         setRoute({
           id: String(routeData.id),
-          date: String(routeData.date),
-          notes: routeData.notes ? String(routeData.notes) : null,
+          route_date: String(routeData.route_date),
           status: parseRouteStatus(routeData.status),
         });
 
         const { data: stopsData, error: stopsError } = await supabase
           .from('route_stops')
-          .select('id,stop_order,recipient_name,address,status')
+          .select('id,stop_order,title,address,status')
           .eq('route_id', routeData.id)
           .order('stop_order', { ascending: true });
 
@@ -110,7 +108,7 @@ export default function DriverHomePage() {
           (stopsData ?? []).map((stop) => ({
             id: String(stop.id),
             stop_order: Number(stop.stop_order ?? 0),
-            recipient_name: stop.recipient_name ? String(stop.recipient_name) : null,
+            title: stop.title ? String(stop.title) : null,
             address: stop.address ? String(stop.address) : null,
             status: parseStopStatus(stop.status),
           }))
@@ -161,7 +159,7 @@ export default function DriverHomePage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-slate-700">Estado de ruta</p>
-                <p className="text-xs text-slate-500">{route.date}</p>
+                <p className="text-xs text-slate-500">{route.route_date}</p>
               </div>
               <Badge variant="secondary" className="capitalize">{route.status}</Badge>
             </div>
@@ -182,7 +180,7 @@ export default function DriverHomePage() {
               {stops.map((stop) => (
                 <div key={stop.id} className="flex items-start justify-between rounded-lg border border-slate-200 p-3">
                   <div>
-                    <p className="text-sm font-medium text-slate-900">#{stop.stop_order} · {stop.recipient_name || 'Destinatario'}</p>
+                    <p className="text-sm font-medium text-slate-900">#{stop.stop_order} · {stop.title || 'Parada sin título'}</p>
                     <p className="text-xs text-slate-500">{stop.address || 'Dirección pendiente'}</p>
                   </div>
                   <div className="ml-2 flex items-center gap-1 text-xs capitalize text-slate-500">

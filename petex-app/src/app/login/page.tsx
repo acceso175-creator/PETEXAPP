@@ -313,7 +313,7 @@ export default function LoginPage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-slate-900">Resumen de actualización</p>
-              <p className="text-xs text-slate-500">Codex Summary · Seguridad de roles</p>
+              <p className="text-xs text-slate-500">Codex Summary · Asignación de rutas admin → driver</p>
             </div>
             <Clock3 className="h-4 w-4 text-orange-600" />
           </div>

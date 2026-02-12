@@ -1,6 +1,16 @@
 [
   {
     "date": "2026-02-12",
+    "title": "Asignación mínima de rutas admin→driver en producción",
+    "highlights": [
+      "Se estandarizó el esquema de public.routes y public.route_stops (driver_profile_id, route_date, title/address/lat/lng/status) con índices para consulta por driver y orden de paradas.",
+      "Se reforzó RLS para que admin tenga CRUD completo en rutas/paradas y driver solo pueda leer su ruta de hoy y sus stops asociados.",
+      "Admin /admin/routes ahora permite seleccionar driver, crear ruta de hoy, gestionar paradas (agregar, reordenar, borrar) y guardar cambios con toasts de éxito/error.",
+      "Driver /app carga la ruta de hoy con la nueva estructura y muestra estado vacío limpio cuando no tiene ruta asignada."
+    ]
+  },
+  {
+    "date": "2026-02-12",
     "title": "Fix de cambio de rol en Admin Usuarios (RPC segura)",
     "highlights": [
       "Se reemplazó el cambio de rol directo por una función SQL SECURITY DEFINER (admin_set_user_role) que valida sesión, rol admin y roles permitidos (admin, driver, ops).",
