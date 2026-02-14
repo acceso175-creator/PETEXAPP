@@ -20,6 +20,7 @@ export interface Zone {
     type: 'Polygon';
     coordinates: number[][][];
   };
+  keywords?: string[];
 }
 
 export type PackageStatus = 'created' | 'assigned' | 'pending' | 'delivering' | 'delivered' | 'failed';

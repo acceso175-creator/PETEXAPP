@@ -1,5 +1,17 @@
 [
   {
+    "date": "2026-02-15",
+    "title": "Ruteo masivo por Excel/CSV con segmentación por zonas y drivers",
+    "highlights": [
+      "Admin /admin/routes ahora permite subir pedidos por archivo (CSV y XLSX cuando la librería está disponible), previsualizar filas y validar dirección obligatoria.",
+      "Se agregó asignación automática de zona por keywords/CP y generación de rutas por zona en bloques de hasta 150 pedidos por ruta, con selección de driver único o por zona.",
+      "El alta masiva crea shipments, routes y route_stops en cadena y muestra resumen humano de rutas creadas y conteos por zona.",
+      "Se reforzó el modelo/RLS en Supabase para shipments, routes y route_stops; drivers solo leen su operación y admin mantiene CRUD completo.",
+      "Admin /admin/zones ahora permite editar keywords tipo chips para mejorar la clasificación automática de direcciones.",
+      "Driver /app muestra paradas de la ruta de hoy desde route_stops + shipments con estados vacíos claros."
+    ]
+  },
+  {
     "date": "2026-02-14",
     "title": "Fix RLS en rutas: admin crea sin 42501 y driver ve solo lo suyo",
     "highlights": [

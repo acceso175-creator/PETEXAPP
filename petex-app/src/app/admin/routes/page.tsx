@@ -8,29 +8,23 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { LoadingScreen } from '@/components/ui/loading-spinner';
 import { getSupabaseClient, supabaseConfigError } from '@/lib/supabase/client';
-import { Plus, Trash2, ArrowDown, ArrowUp } from 'lucide-react';
+import { Upload, Route, MapPin, AlertTriangle } from 'lucide-react';
 
-type DriverProfile = {
-  id: string;
-  full_name: string | null;
-  email: string | null;
-};
-
-type RouteStopForm = {
-  id?: string;
-  localId: string;
-  stop_order: number;
-  title: string;
+type DriverProfile = { id: string; full_name: string | null; email: string | null };
+type Zone = { id: string; name: string; color: string; keywords: string[] };
+type ParsedShipment = {
+  external_ref: string | null;
+  customer_name: string | null;
+  phone: string | null;
   address: string;
-  lat: string;
-  lng: string;
-  status: string;
+  raw_row: Record<string, unknown>;
+  zone_id: string | null;
+  zone_reason: string;
 };
 
-type RouteRow = {
-  id: string;
-  status: string;
-};
+type CreatedRouteResult = { zone: string; driver: string; shipments: number };
+
+const CHUNK_SIZE = 150;
 
 const todayLocalIso = () => {
   const now = new Date();
@@ -38,32 +32,88 @@ const todayLocalIso = () => {
   return localDate.toISOString().slice(0, 10);
 };
 
-const createStopDraft = (index: number): RouteStopForm => ({
-  localId: `new-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-  stop_order: index + 1,
-  title: '',
-  address: '',
-  lat: '',
-  lng: '',
-  status: 'pending',
-});
+const normalizeKey = (key: string) => key.trim().toLowerCase().replace(/\s+/g, '_');
+
+const pick = (row: Record<string, unknown>, aliases: string[]) => {
+  for (const [k, v] of Object.entries(row)) {
+    const nk = normalizeKey(k);
+    if (aliases.includes(nk) && v != null && String(v).trim()) return String(v).trim();
+  }
+  return null;
+};
+
+const parseCsv = async (file: File): Promise<Record<string, unknown>[]> => {
+  const text = await file.text();
+  const lines = text.split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(',').map((h) => h.trim());
+  return lines.slice(1).map((line) => {
+    const cols = line.split(',');
+    const row: Record<string, unknown> = {};
+    headers.forEach((h, i) => {
+      row[h] = (cols[i] ?? '').trim();
+    });
+    return row;
+  });
+};
+
+const parseXlsxIfAvailable = async (file: File): Promise<Record<string, unknown>[]> => {
+  try {
+    type XlsxModule = {
+      read: (data: ArrayBuffer, opts: { type: 'array' }) => { SheetNames: string[]; Sheets: Record<string, unknown> };
+      utils: { sheet_to_json: (sheet: unknown, opts: { defval: string }) => Record<string, unknown>[] };
+    };
+    const dynamicImport = (0, eval)('import("xlsx")') as Promise<XlsxModule>;
+    const XLSX = await dynamicImport;
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: 'array' });
+    const firstSheet = workbook.SheetNames[0];
+    return XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { defval: '' });
+  } catch {
+    throw new Error('Este build no tiene soporte XLSX. Convierte el archivo a CSV para subirlo.');
+  }
+};
+
+const normalizeRows = (rows: Record<string, unknown>[]): ParsedShipment[] =>
+  rows
+    .map((row) => {
+      const external_ref = pick(row, ['ref', 'external_ref', 'reference', 'pedido', 'order_id']);
+      const customer_name = pick(row, ['name', 'nombre', 'customer_name', 'cliente']);
+      const phone = pick(row, ['phone', 'telefono', 'teléfono', 'mobile', 'celular']);
+      const address = pick(row, ['address', 'direccion', 'dirección', 'street', 'domicilio']) ?? '';
+      return {
+        external_ref,
+        customer_name,
+        phone,
+        address,
+        raw_row: row,
+        zone_id: null,
+        zone_reason: 'sin asignar',
+      };
+    })
+    .filter((row) => row.address.trim().length > 0);
+
+const chunk = <T,>(items: T[], size: number): T[][] => {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+};
 
 export default function AdminRoutesPage() {
   const [drivers, setDrivers] = useState<DriverProfile[]>([]);
-  const [selectedDriverId, setSelectedDriverId] = useState('');
-  const [route, setRoute] = useState<RouteRow | null>(null);
-  const [stops, setStops] = useState<RouteStopForm[]>([]);
-  const [removedStopIds, setRemovedStopIds] = useState<string[]>([]);
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [rows, setRows] = useState<ParsedShipment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [singleDriverId, setSingleDriverId] = useState('');
+  const [useSingleDriver, setUseSingleDriver] = useState(true);
+  const [driverByZone, setDriverByZone] = useState<Record<string, string>>({});
+  const [result, setResult] = useState<CreatedRouteResult[]>([]);
 
-  const selectedDriver = useMemo(
-    () => drivers.find((driver) => driver.id === selectedDriverId) ?? null,
-    [drivers, selectedDriverId]
-  );
+  const zoneMap = useMemo(() => new Map(zones.map((z) => [z.id, z])), [zones]);
 
   useEffect(() => {
-    const loadDrivers = async () => {
+    const loadData = async () => {
       if (supabaseConfigError) {
         toast.error('Supabase no está configurado en este entorno.');
         setIsLoading(false);
@@ -72,361 +122,286 @@ export default function AdminRoutesPage() {
 
       try {
         const supabase = getSupabaseClient();
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('id,full_name,email')
-          .eq('role', 'driver')
-          .order('full_name', { ascending: true });
+        const [{ data: profiles, error: profilesError }, { data: zonesData, error: zonesError }] =
+          await Promise.all([
+            supabase.from('profiles').select('id,full_name,email').eq('role', 'driver').order('full_name'),
+            supabase.from('zones').select('id,name,color,keywords').order('name'),
+          ]);
+        if (profilesError) throw profilesError;
+        if (zonesError) throw zonesError;
 
-        if (error) throw error;
+        const nextDrivers = (profiles ?? []).map((d) => ({
+          id: String(d.id),
+          full_name: d.full_name ? String(d.full_name) : null,
+          email: d.email ? String(d.email) : null,
+        }));
 
-        const nextDrivers = (data ?? []).map((row) => ({
-          id: String(row.id),
-          full_name: row.full_name ? String(row.full_name) : null,
-          email: row.email ? String(row.email) : null,
+        const nextZones = (zonesData ?? []).map((z) => ({
+          id: String(z.id),
+          name: String(z.name ?? 'Zona'),
+          color: String(z.color ?? '#94a3b8'),
+          keywords: Array.isArray(z.keywords) ? z.keywords.map((k) => String(k).toLowerCase()) : [],
         }));
 
         setDrivers(nextDrivers);
-        if (nextDrivers.length > 0) {
-          setSelectedDriverId(nextDrivers[0].id);
-        }
+        setZones(nextZones);
+        if (nextDrivers[0]) setSingleDriverId(nextDrivers[0].id);
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'No se pudieron cargar los drivers');
+        toast.error(error instanceof Error ? error.message : 'No se pudo cargar catálogo de rutas');
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadDrivers();
+    loadData();
   }, []);
 
-  useEffect(() => {
-    const loadTodayRoute = async () => {
-      if (!selectedDriverId || supabaseConfigError) {
-        setRoute(null);
-        setStops([]);
-        setRemovedStopIds([]);
-        return;
+  const grouped = useMemo(() => {
+    const map = new Map<string, ParsedShipment[]>();
+    for (const row of rows) {
+      const key = row.zone_id ?? 'sin-zona';
+      map.set(key, [...(map.get(key) ?? []), row]);
+    }
+    return map;
+  }, [rows]);
+
+  const handleFile = async (file: File) => {
+    try {
+      let rawRows: Record<string, unknown>[] = [];
+      const lower = file.name.toLowerCase();
+      if (lower.endsWith('.csv')) rawRows = await parseCsv(file);
+      else if (lower.endsWith('.xlsx')) rawRows = await parseXlsxIfAvailable(file);
+      else throw new Error('Formato no soportado. Usa .csv o .xlsx');
+
+      const normalized = normalizeRows(rawRows);
+      setRows(normalized);
+      setResult([]);
+      toast.success(`Archivo cargado: ${normalized.length} pedidos válidos.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo leer el archivo');
+    }
+  };
+
+  const assignZones = () => {
+    const next = rows.map((row) => {
+      const addressLower = row.address.toLowerCase();
+      const cpMatch = addressLower.match(/\b\d{5}\b/);
+      const byKeyword = zones.find((zone) => zone.keywords.some((kw) => addressLower.includes(kw)));
+      const byCp = cpMatch ? zones.find((zone) => zone.keywords.includes(cpMatch[0])) : undefined;
+      const winner = byKeyword ?? byCp;
+      return {
+        ...row,
+        zone_id: winner?.id ?? null,
+        zone_reason: winner ? `match ${winner.name}` : 'sin zona',
+      };
+    });
+    setRows(next);
+    toast.success('Zonas asignadas por keywords / código postal.');
+  };
+
+  const createRoutes = async () => {
+    if (!rows.length) {
+      toast.error('Carga pedidos antes de crear rutas.');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      const supabase = getSupabaseClient();
+      const byRef = rows.filter((r) => r.external_ref);
+      const noRef = rows.filter((r) => !r.external_ref);
+
+      const shipmentIdByRef = new Map<string, string>();
+      if (byRef.length) {
+        const { data, error } = await supabase
+          .from('shipments')
+          .upsert(
+            byRef.map((r) => ({
+              external_ref: r.external_ref,
+              customer_name: r.customer_name,
+              phone: r.phone,
+              address: r.address,
+              raw_row: r.raw_row,
+              zone_id: r.zone_id,
+              status: 'pending',
+            })),
+            { onConflict: 'external_ref' }
+          )
+          .select('id,external_ref');
+        if (error) throw error;
+        (data ?? []).forEach((r) => {
+          if (r.external_ref) shipmentIdByRef.set(String(r.external_ref), String(r.id));
+        });
       }
 
-      try {
-        const supabase = getSupabaseClient();
-        const today = todayLocalIso();
-        const { data: routeData, error: routeError } = await supabase
-          .from('routes')
-          .select('id,status')
-          .eq('driver_profile_id', selectedDriverId)
-          .eq('route_date', today)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+      const insertedNoRef: { id: string }[] = [];
+      if (noRef.length) {
+        const { data, error } = await supabase
+          .from('shipments')
+          .insert(
+            noRef.map((r) => ({
+              customer_name: r.customer_name,
+              phone: r.phone,
+              address: r.address,
+              raw_row: r.raw_row,
+              zone_id: r.zone_id,
+              status: 'pending',
+            }))
+          )
+          .select('id');
+        if (error) throw error;
+        insertedNoRef.push(...((data ?? []) as { id: string }[]));
+      }
 
-        if (routeError) throw routeError;
+      const rowsWithShipment = rows.map((r) => {
+        if (r.external_ref) {
+          const id = shipmentIdByRef.get(r.external_ref);
+          return { row: r, shipment_id: id ?? null };
+        }
+        const next = insertedNoRef.shift();
+        return { row: r, shipment_id: next?.id ?? null };
+      });
 
-        if (!routeData) {
-          setRoute(null);
-          setStops([]);
-          setRemovedStopIds([]);
-          return;
+      if (rowsWithShipment.some((r) => !r.shipment_id)) {
+        throw new Error('No se pudieron resolver todos los shipment_id para crear route_stops.');
+      }
+
+      const created: CreatedRouteResult[] = [];
+      for (const [zoneKey, zoneRows] of grouped.entries()) {
+        const driverId = useSingleDriver ? singleDriverId : driverByZone[zoneKey] ?? '';
+        if (!driverId) {
+          throw new Error(`Falta seleccionar driver para grupo ${zoneKey}.`);
+        }
+        const groups = chunk(
+          rowsWithShipment.filter((r) => (r.row.zone_id ?? 'sin-zona') === zoneKey),
+          CHUNK_SIZE
+        );
+
+        for (const routeRows of groups) {
+          const { data: routeData, error: routeError } = await supabase
+            .from('routes')
+            .insert({
+              route_date: todayLocalIso(),
+              zone_id: zoneKey === 'sin-zona' ? null : zoneKey,
+              driver_profile_id: driverId,
+              status: 'active',
+            })
+            .select('id')
+            .single();
+          if (routeError) throw routeError;
+
+          const { error: stopsError } = await supabase.from('route_stops').insert(
+            routeRows.map((item, index) => ({
+              route_id: routeData.id,
+              shipment_id: item.shipment_id,
+              stop_order: index + 1,
+              status: 'pending',
+            }))
+          );
+          if (stopsError) throw stopsError;
         }
 
-        setRoute({ id: String(routeData.id), status: String(routeData.status ?? 'assigned') });
-
-        const { data: stopsData, error: stopsError } = await supabase
-          .from('route_stops')
-          .select('id,stop_order,title,address,lat,lng,status')
-          .eq('route_id', routeData.id)
-          .order('stop_order', { ascending: true });
-
-        if (stopsError) throw stopsError;
-
-        setStops(
-          (stopsData ?? []).map((row, index) => ({
-            id: String(row.id),
-            localId: `saved-${row.id}`,
-            stop_order: Number(row.stop_order ?? index + 1),
-            title: row.title ? String(row.title) : '',
-            address: row.address ? String(row.address) : '',
-            lat: row.lat != null ? String(row.lat) : '',
-            lng: row.lng != null ? String(row.lng) : '',
-            status: row.status ? String(row.status) : 'pending',
-          }))
-        );
-        setRemovedStopIds([]);
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'No se pudo cargar la ruta del driver');
+        created.push({
+          zone: zoneKey === 'sin-zona' ? 'Sin zona' : zoneMap.get(zoneKey)?.name ?? zoneKey,
+          driver: drivers.find((d) => d.id === driverId)?.full_name ?? driverId,
+          shipments: zoneRows.length,
+        });
       }
-    };
 
-    loadTodayRoute();
-  }, [selectedDriverId]);
-
-  const reindexStops = (nextStops: RouteStopForm[]) =>
-    nextStops.map((stop, index) => ({ ...stop, stop_order: index + 1 }));
-
-  const handleCreateRouteToday = async () => {
-    if (!selectedDriverId) {
-      toast.error('Selecciona un driver antes de crear la ruta.');
-      return;
-    }
-
-    if (route) {
-      toast.success('Este driver ya tiene ruta para hoy.');
-      return;
-    }
-
-    try {
-      const supabase = getSupabaseClient();
-      const today = todayLocalIso();
-      const { data, error } = await supabase
-        .from('routes')
-        .insert({
-          driver_profile_id: selectedDriverId,
-          route_date: today,
-          status: 'assigned',
-        })
-        .select('id,status')
-        .single();
-
-      if (error) throw error;
-
-      setRoute({ id: String(data.id), status: String(data.status ?? 'assigned') });
-      setStops([]);
-      setRemovedStopIds([]);
-      toast.success('Ruta de hoy creada. Ahora agrega las paradas.');
+      setResult(created);
+      toast.success(`Rutas creadas: ${created.length} grupos.`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo crear la ruta');
-    }
-  };
-
-  const handleStopChange = (localId: string, field: keyof RouteStopForm, value: string) => {
-    setStops((prev) =>
-      prev.map((stop) => (stop.localId === localId ? { ...stop, [field]: value } : stop))
-    );
-  };
-
-  const handleAddStop = () => {
-    setStops((prev) => [...prev, createStopDraft(prev.length)]);
-  };
-
-  const moveStop = (index: number, direction: -1 | 1) => {
-    setStops((prev) => {
-      const toIndex = index + direction;
-      if (toIndex < 0 || toIndex >= prev.length) return prev;
-      const next = [...prev];
-      const [item] = next.splice(index, 1);
-      next.splice(toIndex, 0, item);
-      return reindexStops(next);
-    });
-  };
-
-  const handleDeleteStop = (localId: string) => {
-    setStops((prev) => {
-      const stop = prev.find((item) => item.localId === localId);
-      if (stop?.id) {
-        setRemovedStopIds((existing) => [...existing, stop.id as string]);
-      }
-      return reindexStops(prev.filter((item) => item.localId !== localId));
-    });
-  };
-
-  const handleSave = async () => {
-    if (!route) {
-      toast.error('Primero crea una ruta para hoy.');
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const supabase = getSupabaseClient();
-
-      const normalizedStops = reindexStops(stops);
-      const updateRows = normalizedStops.filter((stop) => stop.id);
-      const insertRows = normalizedStops.filter((stop) => !stop.id);
-
-      for (const stop of updateRows) {
-        const { error } = await supabase
-          .from('route_stops')
-          .update({
-            stop_order: stop.stop_order,
-            title: stop.title.trim() || null,
-            address: stop.address.trim() || null,
-            lat: stop.lat.trim() ? Number(stop.lat) : null,
-            lng: stop.lng.trim() ? Number(stop.lng) : null,
-            status: stop.status,
-          })
-          .eq('id', stop.id as string);
-
-        if (error) throw error;
-      }
-
-      if (insertRows.length > 0) {
-        const { error } = await supabase.from('route_stops').insert(
-          insertRows.map((stop) => ({
-            route_id: route.id,
-            stop_order: stop.stop_order,
-            title: stop.title.trim() || null,
-            address: stop.address.trim() || null,
-            lat: stop.lat.trim() ? Number(stop.lat) : null,
-            lng: stop.lng.trim() ? Number(stop.lng) : null,
-            status: stop.status,
-          }))
-        );
-
-        if (error) throw error;
-      }
-
-      if (removedStopIds.length > 0) {
-        const { error } = await supabase.from('route_stops').delete().in('id', removedStopIds);
-        if (error) throw error;
-      }
-
-      toast.success('Ruta guardada correctamente');
-
-      const { data: stopsData, error: stopsError } = await supabase
-        .from('route_stops')
-        .select('id,stop_order,title,address,lat,lng,status')
-        .eq('route_id', route.id)
-        .order('stop_order', { ascending: true });
-
-      if (stopsError) throw stopsError;
-
-      setStops(
-        (stopsData ?? []).map((row, index) => ({
-          id: String(row.id),
-          localId: `saved-${row.id}`,
-          stop_order: Number(row.stop_order ?? index + 1),
-          title: row.title ? String(row.title) : '',
-          address: row.address ? String(row.address) : '',
-          lat: row.lat != null ? String(row.lat) : '',
-          lng: row.lng != null ? String(row.lng) : '',
-          status: row.status ? String(row.status) : 'pending',
-        }))
-      );
-      setRemovedStopIds([]);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo guardar la ruta');
+      toast.error(error instanceof Error ? error.message : 'Error creando rutas');
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (isLoading) {
-    return <LoadingScreen message="Cargando asignación de rutas..." />;
-  }
+  if (isLoading) return <LoadingScreen message="Cargando módulo de rutas..." />;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Asignar ruta a driver</h1>
-        <p className="text-slate-500">Crea la ruta de hoy y administra sus paradas.</p>
-      </div>
-
-      <Card className="p-4 space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="driver-selector">Driver</Label>
-          <select
-            id="driver-selector"
-            value={selectedDriverId}
-            onChange={(event) => setSelectedDriverId(event.target.value)}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
-          >
-            {!drivers.length ? <option value="">Sin drivers disponibles</option> : null}
-            {drivers.map((driver) => (
-              <option key={driver.id} value={driver.id}>
-                {driver.full_name || driver.email || driver.id}
-              </option>
-            ))}
-          </select>
+    <div className="space-y-4 p-4 sm:p-6">
+      <Card className="p-4">
+        <h1 className="text-xl font-semibold text-slate-900">Ruteo masivo por archivo</h1>
+        <p className="text-sm text-slate-500">Sube CSV/XLSX de pedidos, asigna zonas y crea rutas (máx 150 pedidos por ruta).</p>
+        <div className="mt-4 space-y-2">
+          <Label htmlFor="file">Archivo</Label>
+          <Input id="file" type="file" accept=".csv,.xlsx" onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleFile(file);
+          }} />
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={handleCreateRouteToday} className="bg-orange-600 hover:bg-orange-700" disabled={!selectedDriverId || Boolean(route)}>
-            Crear ruta de hoy
-          </Button>
-          {route ? <p className="text-sm text-emerald-700">Ruta activa para hoy: {route.id.slice(0, 8)}…</p> : <p className="text-sm text-slate-500">Este driver aún no tiene ruta para hoy.</p>}
-        </div>
-        {selectedDriver ? (
-          <p className="text-xs text-slate-500">
-            Driver seleccionado: <span className="font-medium text-slate-700">{selectedDriver.full_name || selectedDriver.email || selectedDriver.id}</span>
-          </p>
-        ) : null}
       </Card>
 
-      <Card className="p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">Paradas</h2>
-            <p className="text-xs text-slate-500">CRUD básico: agrega, reordena y elimina antes de guardar.</p>
-          </div>
-          <Button variant="outline" onClick={handleAddStop} disabled={!route}>
-            <Plus className="mr-2 h-4 w-4" />
-            Agregar parada
-          </Button>
+      <Card className="p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={assignZones} disabled={!rows.length}><MapPin className="mr-2 h-4 w-4" />Asignar zonas</Button>
+          <Button variant={useSingleDriver ? 'default' : 'outline'} onClick={() => setUseSingleDriver(true)}>Driver único</Button>
+          <Button variant={!useSingleDriver ? 'default' : 'outline'} onClick={() => setUseSingleDriver(false)}>Driver por zona</Button>
         </div>
 
-        {!route ? (
-          <p className="rounded-md border border-dashed border-slate-300 p-4 text-sm text-slate-500">
-            Primero crea la ruta de hoy para habilitar la edición de paradas.
-          </p>
-        ) : stops.length === 0 ? (
-          <p className="rounded-md border border-dashed border-slate-300 p-4 text-sm text-slate-500">
-            Esta ruta todavía no tiene paradas. Agrega la primera parada para comenzar.
-          </p>
+        {useSingleDriver ? (
+          <div className="mt-3 space-y-2">
+            <Label>Driver</Label>
+            <select className="w-full rounded-md border border-slate-200 p-2 text-sm" value={singleDriverId} onChange={(e) => setSingleDriverId(e.target.value)}>
+              <option value="">Selecciona driver</option>
+              {drivers.map((d) => <option key={d.id} value={d.id}>{d.full_name ?? d.email ?? d.id}</option>)}
+            </select>
+          </div>
         ) : (
-          <div className="space-y-3">
-            {stops.map((stop, index) => (
-              <Card key={stop.localId} className="p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-slate-900">Parada #{stop.stop_order}</p>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => moveStop(index, -1)} disabled={index === 0}>
-                      <ArrowUp className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => moveStop(index, 1)} disabled={index === stops.length - 1}>
-                      <ArrowDown className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleDeleteStop(stop.localId)}>
-                      <Trash2 className="h-4 w-4 text-red-600" />
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="grid gap-2 md:grid-cols-2">
-                  <Input
-                    placeholder="Título o nombre del destinatario"
-                    value={stop.title}
-                    onChange={(event) => handleStopChange(stop.localId, 'title', event.target.value)}
-                  />
-                  <Input
-                    placeholder="Dirección"
-                    value={stop.address}
-                    onChange={(event) => handleStopChange(stop.localId, 'address', event.target.value)}
-                  />
-                  <Input
-                    type="number"
-                    step="any"
-                    placeholder="Latitud"
-                    value={stop.lat}
-                    onChange={(event) => handleStopChange(stop.localId, 'lat', event.target.value)}
-                  />
-                  <Input
-                    type="number"
-                    step="any"
-                    placeholder="Longitud"
-                    value={stop.lng}
-                    onChange={(event) => handleStopChange(stop.localId, 'lng', event.target.value)}
-                  />
-                </div>
-              </Card>
+          <div className="mt-3 space-y-2">
+            {[...grouped.keys()].map((zoneKey) => (
+              <div key={zoneKey} className="rounded border border-slate-200 p-2">
+                <p className="mb-1 text-sm font-medium">{zoneKey === 'sin-zona' ? 'Sin zona' : zoneMap.get(zoneKey)?.name ?? zoneKey}</p>
+                <select
+                  className="w-full rounded-md border border-slate-200 p-2 text-sm"
+                  value={driverByZone[zoneKey] ?? ''}
+                  onChange={(e) => setDriverByZone((prev) => ({ ...prev, [zoneKey]: e.target.value }))}
+                >
+                  <option value="">Selecciona driver</option>
+                  {drivers.map((d) => <option key={d.id} value={d.id}>{d.full_name ?? d.email ?? d.id}</option>)}
+                </select>
+              </div>
             ))}
           </div>
         )}
 
-        <Button onClick={handleSave} disabled={!route || isSaving} className="bg-orange-600 hover:bg-orange-700">
-          {isSaving ? 'Guardando...' : 'Guardar'}
+        <Button className="mt-4 bg-orange-600 hover:bg-orange-700" onClick={createRoutes} disabled={isSaving || !rows.length}>
+          <Route className="mr-2 h-4 w-4" />Crear rutas y asignar
         </Button>
       </Card>
+
+      <Card className="p-4">
+        <div className="mb-2 flex items-center gap-2">
+          <Upload className="h-4 w-4 text-slate-500" />
+          <h2 className="text-sm font-semibold">Preview de pedidos ({rows.length})</h2>
+        </div>
+        {!rows.length ? (
+          <p className="text-sm text-slate-500">Sube un archivo para previsualizar pedidos.</p>
+        ) : (
+          <div className="space-y-2">
+            {rows.slice(0, 20).map((row, i) => (
+              <div key={`${row.external_ref ?? 'no-ref'}-${i}`} className="rounded border border-slate-200 p-2 text-sm">
+                <p><strong>{row.customer_name ?? 'Sin nombre'}</strong> · {row.phone ?? 'Sin teléfono'}</p>
+                <p className="text-slate-600">{row.address}</p>
+                <p className="text-xs text-slate-500">Zona: {row.zone_id ? zoneMap.get(row.zone_id)?.name ?? row.zone_id : 'Sin zona'} · {row.zone_reason}</p>
+              </div>
+            ))}
+            {rows.some((r) => !r.zone_id) ? (
+              <p className="flex items-center gap-1 text-xs text-amber-600"><AlertTriangle className="h-3.5 w-3.5" />Hay pedidos sin zona; se agruparán en “Sin zona”.</p>
+            ) : null}
+          </div>
+        )}
+      </Card>
+
+      {result.length ? (
+        <Card className="p-4">
+          <h3 className="text-sm font-semibold">Resultado</h3>
+          {result.map((r, i) => (
+            <p key={`${r.zone}-${i}`} className="text-sm text-slate-700">Zona {r.zone} · Driver {r.driver} · {r.shipments} pedidos</p>
+          ))}
+        </Card>
+      ) : null}
     </div>
   );
 }
