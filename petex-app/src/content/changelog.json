@@ -1,5 +1,37 @@
 [
   {
+    "date": "2026-02-15",
+    "title": "Ruteo masivo por Excel/CSV con segmentación por zonas y drivers",
+    "highlights": [
+      "Admin /admin/routes ahora permite subir pedidos por archivo (CSV y XLSX cuando la librería está disponible), previsualizar filas y validar dirección obligatoria.",
+      "Se agregó asignación automática de zona por keywords/CP y generación de rutas por zona en bloques de hasta 150 pedidos por ruta, con selección de driver único o por zona.",
+      "El alta masiva crea shipments, routes y route_stops en cadena y muestra resumen humano de rutas creadas y conteos por zona.",
+      "Se reforzó el modelo/RLS en Supabase para shipments, routes y route_stops; drivers solo leen su operación y admin mantiene CRUD completo.",
+      "Admin /admin/zones ahora permite editar keywords tipo chips para mejorar la clasificación automática de direcciones.",
+      "Driver /app muestra paradas de la ruta de hoy desde route_stops + shipments con estados vacíos claros."
+    ]
+  },
+  {
+    "date": "2026-02-14",
+    "title": "Fix RLS en rutas: admin crea sin 42501 y driver ve solo lo suyo",
+    "highlights": [
+      "Se ajustaron políticas RLS en public.routes y public.route_stops para que usuarios admin autenticados tengan FOR ALL (crear/editar/eliminar) usando public.is_admin().",
+      "Se definieron políticas de lectura para drivers autenticados que solo permiten ver rutas con driver_profile_id = auth.uid() y sus paradas asociadas vía EXISTS sobre routes.",
+      "Se retiró la variante de políticas 'today' para evitar bloqueos inesperados y alinear el acceso con la asignación real por driver.",
+      "Con esto, /admin/routes puede crear rutas sin error 42501 y la app del driver mantiene visibilidad restringida a sus propios datos."
+    ]
+  },
+  {
+    "date": "2026-02-13",
+    "title": "Fix de alineación routes: driver_profile_id real en admin",
+    "highlights": [
+      "Se agregó una migración de compatibilidad para asegurar public.routes.driver_profile_id con foreign key a public.profiles(id) e índice compuesto (driver_profile_id, route_date).",
+      "Si la base tenía columnas legacy (driver_id o driver_user_id), ahora se migran automáticamente a driver_profile_id sin perder asignaciones existentes.",
+      "Los queries del frontend para rutas quedaron estandarizados a nombres reales del schema (driver_profile_id en routes y route_id/stop_order en route_stops).",
+      "Con este ajuste, /admin/routes y la vista del driver consultan el mismo contrato de datos en Supabase."
+    ]
+  },
+  {
     "date": "2026-02-12",
     "title": "Asignación mínima de rutas admin→driver en producción",
     "highlights": [

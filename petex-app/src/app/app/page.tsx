@@ -25,7 +25,7 @@ type DriverRoute = {
 type DriverStop = {
   id: string;
   stop_order: number;
-  title: string | null;
+  customer_name: string | null;
   address: string | null;
   status: StopStatus;
 };
@@ -96,7 +96,7 @@ export default function DriverHomePage() {
 
         const { data: stopsData, error: stopsError } = await supabase
           .from('route_stops')
-          .select('id,stop_order,title,address,status')
+          .select('id,stop_order,status,shipments:shipment_id(customer_name,address)')
           .eq('route_id', routeData.id)
           .order('stop_order', { ascending: true });
 
@@ -108,8 +108,14 @@ export default function DriverHomePage() {
           (stopsData ?? []).map((stop) => ({
             id: String(stop.id),
             stop_order: Number(stop.stop_order ?? 0),
-            title: stop.title ? String(stop.title) : null,
-            address: stop.address ? String(stop.address) : null,
+            customer_name:
+              stop.shipments && typeof stop.shipments === 'object' && 'customer_name' in stop.shipments && stop.shipments.customer_name
+                ? String(stop.shipments.customer_name)
+                : null,
+            address:
+              stop.shipments && typeof stop.shipments === 'object' && 'address' in stop.shipments && stop.shipments.address
+                ? String(stop.shipments.address)
+                : null,
             status: parseStopStatus(stop.status),
           }))
         );
@@ -180,7 +186,7 @@ export default function DriverHomePage() {
               {stops.map((stop) => (
                 <div key={stop.id} className="flex items-start justify-between rounded-lg border border-slate-200 p-3">
                   <div>
-                    <p className="text-sm font-medium text-slate-900">#{stop.stop_order} · {stop.title || 'Parada sin título'}</p>
+                    <p className="text-sm font-medium text-slate-900">#{stop.stop_order} · {stop.customer_name || 'Cliente sin nombre'}</p>
                     <p className="text-xs text-slate-500">{stop.address || 'Dirección pendiente'}</p>
                   </div>
                   <div className="ml-2 flex items-center gap-1 text-xs capitalize text-slate-500">
