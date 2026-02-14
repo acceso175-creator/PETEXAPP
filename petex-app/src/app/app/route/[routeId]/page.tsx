@@ -12,8 +12,9 @@ type StopStatus = typeof STOP_STATUS[number];
 type StopDetail = {
   id: string;
   stop_order: number;
+  title: string | null;
   recipient_name: string | null;
-  address: string | null;
+  address_line1: string | null;
   status: StopStatus;
 };
 
@@ -44,7 +45,7 @@ export default function DriverRouteDetailPage() {
         const supabase = getSupabaseClient();
         const { data, error: stopsError } = await supabase
           .from('route_stops')
-          .select('id,stop_order,recipient_name,address,status')
+          .select('id,stop_order,title,address_text,meta,shipments:shipment_id(customer_name,address),status')
           .eq('route_id', routeId)
           .order('stop_order', { ascending: true });
 
@@ -53,8 +54,19 @@ export default function DriverRouteDetailPage() {
           (data ?? []).map((stop) => ({
             id: String(stop.id),
             stop_order: Number(stop.stop_order ?? 0),
-            recipient_name: stop.recipient_name ? String(stop.recipient_name) : null,
-            address: stop.address ? String(stop.address) : null,
+            title: stop.title ? String(stop.title) : null,
+            recipient_name:
+              stop.shipments && typeof stop.shipments === 'object' && 'customer_name' in stop.shipments && stop.shipments.customer_name
+                ? String(stop.shipments.customer_name)
+                : stop.meta && typeof stop.meta === 'object' && 'customer_name' in stop.meta && stop.meta.customer_name
+                  ? String(stop.meta.customer_name)
+                  : null,
+            address_line1:
+              stop.shipments && typeof stop.shipments === 'object' && 'address' in stop.shipments && stop.shipments.address
+                ? String(stop.shipments.address)
+                : stop.address_text
+                  ? String(stop.address_text)
+                  : null,
             status: parseStopStatus(stop.status),
           }))
         );
@@ -79,9 +91,9 @@ export default function DriverRouteDetailPage() {
           {stops.map((stop) => (
             <div key={stop.id} className="rounded-lg border border-slate-200 p-3">
               <p className="text-sm font-medium text-slate-900">
-                #{stop.stop_order} · {stop.recipient_name || 'Destinatario'}
+                #{stop.stop_order} · {stop.title || stop.recipient_name || stop.address_line1 || 'Parada'}
               </p>
-              <p className="text-xs text-slate-500">{stop.address || 'Dirección pendiente'}</p>
+              <p className="text-xs text-slate-500">{stop.address_line1 || 'Dirección pendiente'}</p>
               <p className="mt-1 text-xs capitalize text-slate-600">Estado: {stop.status}</p>
             </div>
           ))}
