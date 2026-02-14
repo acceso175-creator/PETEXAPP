@@ -1,5 +1,15 @@
 [
   {
+    "date": "2026-02-13",
+    "title": "Fix de alineación routes: driver_profile_id real en admin",
+    "highlights": [
+      "Se agregó una migración de compatibilidad para asegurar public.routes.driver_profile_id con foreign key a public.profiles(id) e índice compuesto (driver_profile_id, route_date).",
+      "Si la base tenía columnas legacy (driver_id o driver_user_id), ahora se migran automáticamente a driver_profile_id sin perder asignaciones existentes.",
+      "Los queries del frontend para rutas quedaron estandarizados a nombres reales del schema (driver_profile_id en routes y route_id/stop_order en route_stops).",
+      "Con este ajuste, /admin/routes y la vista del driver consultan el mismo contrato de datos en Supabase."
+    ]
+  },
+  {
     "date": "2026-02-12",
     "title": "Asignación mínima de rutas admin→driver en producción",
     "highlights": [
