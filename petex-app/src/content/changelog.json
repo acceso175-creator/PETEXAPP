@@ -1,5 +1,15 @@
 [
   {
+    "date": "2026-02-14",
+    "title": "Fix RLS en rutas: admin crea sin 42501 y driver ve solo lo suyo",
+    "highlights": [
+      "Se ajustaron políticas RLS en public.routes y public.route_stops para que usuarios admin autenticados tengan FOR ALL (crear/editar/eliminar) usando public.is_admin().",
+      "Se definieron políticas de lectura para drivers autenticados que solo permiten ver rutas con driver_profile_id = auth.uid() y sus paradas asociadas vía EXISTS sobre routes.",
+      "Se retiró la variante de políticas 'today' para evitar bloqueos inesperados y alinear el acceso con la asignación real por driver.",
+      "Con esto, /admin/routes puede crear rutas sin error 42501 y la app del driver mantiene visibilidad restringida a sus propios datos."
+    ]
+  },
+  {
     "date": "2026-02-13",
     "title": "Fix de alineación routes: driver_profile_id real en admin",
     "highlights": [
