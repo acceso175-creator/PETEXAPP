@@ -45,7 +45,7 @@ export default function DriverRouteDetailPage() {
         const supabase = getSupabaseClient();
         const { data, error: stopsError } = await supabase
           .from('route_stops')
-          .select('id,stop_order,title,address_text,meta,shipments:shipment_id(customer_name,address),status')
+          .select('id,stop_order,title,address,phone')
           .eq('route_id', routeId)
           .order('stop_order', { ascending: true });
 
@@ -55,19 +55,9 @@ export default function DriverRouteDetailPage() {
             id: String(stop.id),
             stop_order: Number(stop.stop_order ?? 0),
             title: stop.title ? String(stop.title) : null,
-            recipient_name:
-              stop.shipments && typeof stop.shipments === 'object' && 'customer_name' in stop.shipments && stop.shipments.customer_name
-                ? String(stop.shipments.customer_name)
-                : stop.meta && typeof stop.meta === 'object' && 'customer_name' in stop.meta && stop.meta.customer_name
-                  ? String(stop.meta.customer_name)
-                  : null,
-            address_line1:
-              stop.shipments && typeof stop.shipments === 'object' && 'address' in stop.shipments && stop.shipments.address
-                ? String(stop.shipments.address)
-                : stop.address_text
-                  ? String(stop.address_text)
-                  : null,
-            status: parseStopStatus(stop.status),
+            recipient_name: stop.phone ? String(stop.phone) : null,
+            address_line1: stop.address ? String(stop.address) : null,
+            status: 'pending',
           }))
         );
       } catch (loadError) {

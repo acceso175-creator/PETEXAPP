@@ -36,7 +36,7 @@ type NormalizedRow = {
   zone_reason: string;
 };
 
-type CreatedRouteResult = { group: string; driver: string; shipments: number; routes: number };
+type CreatedRouteResult = { group: string; driver: string; deliveries: number; routes: number };
 
 const CHUNK_SIZE = 150;
 
@@ -306,29 +306,29 @@ export default function AdminRoutesPage() {
       setIsSaving(true);
       const supabase = getSupabaseClient();
 
-      const { data: upserted, error: shipmentError } = await supabase
-        .from('shipments')
+      const { data: upserted, error: deliveryError } = await supabase
+        .from('deliveries')
         .upsert(
           validRows.map((row) => ({
             tracking_code: row.order_id,
+            carrier: row.carrier || inferCarrierFromTracking(row.order_id),
             recipient_name: row.customer_name || null,
             recipient_phone: row.phone || null,
             city: row.city || null,
             neighborhood: row.zone_hint || null,
             address_line: row.address_line1,
             postal_code: row.postal_code || null,
-            carrier: row.carrier || inferCarrierFromTracking(row.order_id),
             status: 'created',
             notes: row.notes || null,
           })),
           { onConflict: 'tracking_code' }
         )
-        .select('id,tracking_code,carrier');
+        .select('id,tracking_code,carrier,recipient_name,recipient_phone,address_line,postal_code,status,notes');
 
-      if (shipmentError) throw shipmentError;
-      const shipmentIdByOrder = new Map<string, string>();
+      if (deliveryError) throw deliveryError;
+      const deliveryIdByOrder = new Map<string, string>();
       (upserted ?? []).forEach((item) => {
-        if (item.tracking_code) shipmentIdByOrder.set(String(item.tracking_code), String(item.id));
+        if (item.tracking_code) deliveryIdByOrder.set(String(item.tracking_code), String(item.id));
       });
 
       const created: CreatedRouteResult[] = [];
@@ -353,28 +353,16 @@ export default function AdminRoutesPage() {
           if (routeError) throw routeError;
 
           const stopsPayload = slice.map((row, index) => {
-            const shipmentId = shipmentIdByOrder.get(row.order_id);
-            if (!shipmentId) throw new Error(`No se encontró shipment para order_id ${row.order_id}`);
+            const deliveryId = deliveryIdByOrder.get(row.order_id);
+            if (!deliveryId) throw new Error(`No se encontró delivery para order_id ${row.order_id}`);
             const title = row.customer_name || row.address_line1 || 'Parada';
             return {
               route_id: routeData.id,
-              shipment_id: shipmentId,
-              position: index + 1,
+              delivery_id: deliveryId,
               stop_order: index + 1,
-              title,
-              address_text: row.address_line1,
+              title: title || row.order_id,
               address: row.address_line1,
-              status: 'pending',
-              meta: {
-                order_id: row.order_id,
-                phone: row.phone,
-                customer_name: row.customer_name,
-                zone_hint: row.zone_hint,
-                city: row.city,
-                postal_code: row.postal_code,
-                carrier: row.carrier || inferCarrierFromTracking(row.order_id),
-                notes: row.notes,
-              },
+              phone: row.phone || null,
             };
           });
 
@@ -388,7 +376,7 @@ export default function AdminRoutesPage() {
               ? 'Driver único'
               : (zoneMap.get(groupKey)?.name ?? (groupRows[0]?.zone_hint || 'Sin zona')),
           driver: drivers.find((driver) => driver.id === driverId)?.full_name ?? driverId,
-          shipments: groupRows.length,
+          deliveries: groupRows.length,
           routes: chunks.length,
         });
       }
@@ -407,7 +395,7 @@ export default function AdminRoutesPage() {
   return (
     <div className="space-y-4 p-4 sm:p-6">
       <Card className="p-4">
-        <h1 className="text-xl font-semibold text-slate-900">Ruteo masivo por CSV</h1>
+        <h1 className="text-xl font-semibold text-slate-900">Ruteo masivo por CSV (deliveries)</h1>
         <p className="text-sm text-slate-500">Carga CSV y crea rutas chunked de máximo 150 pedidos.</p>
         <div className="mt-4">
           <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
@@ -541,7 +529,7 @@ export default function AdminRoutesPage() {
           <h3 className="text-sm font-semibold">Resultado</h3>
           {result.map((item, index) => (
             <p key={`${item.group}-${index}`} className="text-sm text-slate-700">
-              Grupo {item.group} · Driver {item.driver} · {item.shipments} pedidos · {item.routes} rutas
+              Grupo {item.group} · Driver {item.driver} · {item.deliveries} pedidos · {item.routes} rutas
             </p>
           ))}
         </Card>
