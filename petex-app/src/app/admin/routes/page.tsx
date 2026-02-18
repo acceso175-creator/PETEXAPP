@@ -326,9 +326,9 @@ export default function AdminRoutesPage() {
         .select('id,tracking_code,recipient_phone,address_line');
 
       if (shipmentError) throw shipmentError;
-      const deliveryIdByOrder = new Map<string, string>();
+      const shipmentIdByOrder = new Map<string, string>();
       (upserted ?? []).forEach((item) => {
-        if (item.tracking_code) deliveryIdByOrder.set(String(item.tracking_code), String(item.id));
+        if (item.tracking_code) shipmentIdByOrder.set(String(item.tracking_code), String(item.id));
       });
 
       const created: CreatedRouteResult[] = [];
@@ -353,16 +353,24 @@ export default function AdminRoutesPage() {
           if (routeError) throw routeError;
 
           const stopsPayload = slice.map((row, index) => {
-            const deliveryId = deliveryIdByOrder.get(row.order_id);
-            if (!deliveryId) throw new Error(`No se encontró shipment para order_id ${row.order_id}`);
+            const shipmentId = shipmentIdByOrder.get(row.order_id);
+            if (!shipmentId) throw new Error(`No se encontró shipment para order_id ${row.order_id}`);
             const title = row.customer_name || row.address_line1 || 'Parada';
             return {
               route_id: routeData.id,
-              delivery_id: deliveryId,
+              position: index + 1,
               stop_order: index + 1,
               title: row.customer_name || row.order_id || 'Parada',
-              address: row.address_line1,
-              phone: row.phone || null,
+              address_text: row.address_line1,
+              meta: {
+                shipment_id: shipmentId,
+                order_id: row.order_id,
+                customer_name: row.customer_name,
+                phone: row.phone,
+                zone_hint: row.zone_hint,
+                city: row.city,
+                postal_code: row.postal_code,
+              },
             };
           });
 

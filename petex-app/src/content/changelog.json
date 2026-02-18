@@ -3,6 +3,9 @@
     "date": "2026-02-16",
     "title": "Fix del panel de ruteo masivo: importador flexible + schema/RLS normalizado",
     "highlights": [
+      "Se reforzó el schema para ruteo masivo: zones.color (default #6B7280), route_stops.title (default '') y políticas RLS admin CRUD en routes/route_stops con is_admin().",
+      "Se corrigió el importador CSV con mapeo tolerante de encabezados para evitar casos de 0 pedidos válidos y mostrar errores por fila inválida.",
+      "Se estabilizó la creación de rutas chunked (150) en modo driver único y por zona, insertando stops con route_id/position/stop_order/title/address_text/meta.",
       "Se alineó route_stops al schema real (delivery_id/address/phone) para ruteo masivo estable.",
       "Se corrigió ruteo masivo agregando carrier por defecto/inferido para shipments.",
       "Se alineó el importador al schema real de shipments (address_line/recipient_*).",
