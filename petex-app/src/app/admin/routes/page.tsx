@@ -14,6 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { BulkRoutesResultPanel, type BulkRoutesResultData } from '@/components/domain/BulkRoutesResultPanel';
 import { getSupabaseClient, supabaseConfigError } from '@/lib/supabase/client';
 import { Upload, Route, MapPin, AlertTriangle } from 'lucide-react';
 
@@ -36,15 +37,11 @@ type NormalizedRow = {
   zone_reason: string;
 };
 
-type CreatedRouteResult = { group: string; driver: string; shipments: number; routes: number };
-
 type BulkRoutesResponse = {
-  summary: { routes_created: number; deliveries_imported: number; invalid_rows: number };
-  groups: CreatedRouteResult[];
-  invalid_rows: Array<{ row_number: number; reason: string }>;
+  summary?: { routes_created?: number; deliveries_imported?: number; invalid_rows?: number };
+  groups?: Array<{ group: string; driver: string; shipments: number; routes: number }>;
+  invalid_rows?: Array<{ row_number: number; reason: string }>;
 };
-
-const CHUNK_SIZE = 150;
 
 const ALIASES: Record<string, string[]> = {
   order_id: ['order_id', 'pedido', 'pedido_id', 'id_pedido'],
@@ -186,12 +183,6 @@ const normalizeRows = (rows: Record<string, unknown>[]): NormalizedRow[] =>
     };
   });
 
-const chunk = <T,>(items: T[], size: number): T[][] => {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
-};
-
 export default function AdminRoutesPage() {
   const [drivers, setDrivers] = useState<DriverProfile[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
@@ -201,7 +192,8 @@ export default function AdminRoutesPage() {
   const [singleDriverId, setSingleDriverId] = useState('');
   const [useSingleDriver, setUseSingleDriver] = useState(true);
   const [driverByGroup, setDriverByGroup] = useState<Record<string, string>>({});
-  const [result, setResult] = useState<CreatedRouteResult[]>([]);
+  const [lastResult, setLastResult] = useState<BulkRoutesResultData | null>(null);
+  const [resultError, setResultError] = useState<string | null>(null);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
 
   const validRows = useMemo(() => rows.filter((row) => row.is_valid), [rows]);
@@ -276,7 +268,7 @@ export default function AdminRoutesPage() {
 
       const normalized = normalizeRows(rawRows);
       setRows(normalized);
-      setResult([]);
+      setResultError(null);
       setIsImportDialogOpen(false);
       toast.success(`Archivo cargado: ${normalized.filter((r) => r.is_valid).length} pedidos válidos.`);
     } catch (error) {
@@ -341,19 +333,32 @@ export default function AdminRoutesPage() {
       }
 
       const successPayload = payload as BulkRoutesResponse;
-      setResult(successPayload.groups ?? []);
+      const safeResult: BulkRoutesResultData = {
+        summary: {
+          routes_created: successPayload.summary?.routes_created ?? 0,
+          deliveries_imported: successPayload.summary?.deliveries_imported ?? 0,
+          invalid_rows: successPayload.summary?.invalid_rows ?? successPayload.invalid_rows?.length ?? 0,
+        },
+        groups: successPayload.groups ?? [],
+        invalid_rows: successPayload.invalid_rows ?? [],
+      };
 
-      if (successPayload.invalid_rows?.length) {
+      setLastResult(safeResult);
+      setResultError(null);
+
+      if ((safeResult.invalid_rows?.length ?? 0) > 0) {
         toast.warning(
-          `Rutas creadas: ${successPayload.summary.routes_created}. Importados: ${successPayload.summary.deliveries_imported}. Inválidos: ${successPayload.summary.invalid_rows}.`
+          `Rutas creadas: ${safeResult.summary?.routes_created ?? 0}. Importados: ${safeResult.summary?.deliveries_imported ?? 0}. Inválidos: ${safeResult.summary?.invalid_rows ?? 0}.`
         );
       } else {
         toast.success(
-          `Rutas creadas: ${successPayload.summary.routes_created}. Importados: ${successPayload.summary.deliveries_imported}.`
+          `Rutas creadas: ${safeResult.summary?.routes_created ?? 0}. Importados: ${safeResult.summary?.deliveries_imported ?? 0}.`
         );
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Error creando rutas');
+      const message = error instanceof Error ? error.message : 'Error creando rutas';
+      setResultError(message);
+      toast.error(message);
     } finally {
       setIsSaving(false);
     }
@@ -493,16 +498,7 @@ export default function AdminRoutesPage() {
         ) : null}
       </Card>
 
-      {result.length ? (
-        <Card className="p-4">
-          <h3 className="text-sm font-semibold">Resultado</h3>
-          {result.map((item, index) => (
-            <p key={`${item.group}-${index}`} className="text-sm text-slate-700">
-              Grupo {item.group} · Driver {item.driver} · {item.shipments} pedidos · {item.routes} rutas
-            </p>
-          ))}
-        </Card>
-      ) : null}
+      <BulkRoutesResultPanel result={lastResult} errorMessage={resultError} />
     </div>
   );
 }
