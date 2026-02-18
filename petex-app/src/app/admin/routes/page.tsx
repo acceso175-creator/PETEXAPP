@@ -27,6 +27,7 @@ type NormalizedRow = {
   city: string;
   postal_code: string;
   zone_hint: string;
+  notes: string;
   raw_row: Record<string, unknown>;
   is_valid: boolean;
   errors: string[];
@@ -46,6 +47,7 @@ const ALIASES: Record<string, string[]> = {
   city: ['city', 'ciudad'],
   postal_code: ['postal_code', 'cp', 'zip'],
   zone_hint: ['zone', 'zona', 'zone_hint'],
+  notes: ['notes', 'nota', 'notas', 'observaciones'],
 };
 
 const todayLocalIso = () => {
@@ -142,6 +144,7 @@ const normalizeRows = (rows: Record<string, unknown>[]): NormalizedRow[] =>
     const city = getValueByAliases(row, ALIASES.city);
     const postal_code = getValueByAliases(row, ALIASES.postal_code);
     const zone_hint = getValueByAliases(row, ALIASES.zone_hint);
+    const notes = getValueByAliases(row, ALIASES.notes);
 
     const errors: string[] = [];
     if (!order_id) errors.push('Falta order_id/pedido');
@@ -156,6 +159,7 @@ const normalizeRows = (rows: Record<string, unknown>[]): NormalizedRow[] =>
       city,
       postal_code,
       zone_hint,
+      notes,
       raw_row: row,
       is_valid: errors.length === 0,
       errors,
@@ -294,27 +298,24 @@ export default function AdminRoutesPage() {
         .from('shipments')
         .upsert(
           validRows.map((row) => ({
-            external_ref: row.order_id,
-            customer_name: row.customer_name || null,
-            phone: row.phone || null,
-            address: row.address_line1,
-            raw_row: {
-              ...row.raw_row,
-              city: row.city,
-              postal_code: row.postal_code,
-              zone_hint: row.zone_hint,
-            },
-            zone_id: row.zone_id,
-            status: 'pending',
+            tracking_code: row.order_id,
+            recipient_name: row.customer_name || null,
+            recipient_phone: row.phone || null,
+            city: row.city || null,
+            neighborhood: row.zone_hint || null,
+            address_line: row.address_line1,
+            postal_code: row.postal_code || null,
+            status: 'created',
+            notes: row.notes || null,
           })),
-          { onConflict: 'external_ref' }
+          { onConflict: 'tracking_code' }
         )
-        .select('id,external_ref');
+        .select('id,tracking_code');
 
       if (shipmentError) throw shipmentError;
       const shipmentIdByOrder = new Map<string, string>();
       (upserted ?? []).forEach((item) => {
-        if (item.external_ref) shipmentIdByOrder.set(String(item.external_ref), String(item.id));
+        if (item.tracking_code) shipmentIdByOrder.set(String(item.tracking_code), String(item.id));
       });
 
       const created: CreatedRouteResult[] = [];
@@ -358,6 +359,7 @@ export default function AdminRoutesPage() {
                 zone_hint: row.zone_hint,
                 city: row.city,
                 postal_code: row.postal_code,
+                notes: row.notes,
               },
             };
           });

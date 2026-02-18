@@ -3,6 +3,7 @@
     "date": "2026-02-16",
     "title": "Fix del panel de ruteo masivo: importador flexible + schema/RLS normalizado",
     "highlights": [
+      "Se alineó el importador al schema real de shipments (address_line/recipient_*).",
       "Se corrigió accesibilidad del diálogo y se estabilizó carga por CSV (XLSX con fallback).",
       "Se corrigió carga de zonas (evita 400 por keywords) y se habilitó lectura de XLSX (con fallback a CSV).",
       "Se corrigió el importador CSV/XLSX de /admin/routes con mapeo tolerante de encabezados (order_id, cliente, teléfono, dirección, ciudad, CP y zona) para evitar casos de '0 pedidos válidos' cuando sí hay filas.",
