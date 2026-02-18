@@ -10,6 +10,7 @@ const mapZone = (row: Record<string, unknown>): Zone => ({
     row.polygon_geojson && typeof row.polygon_geojson === 'object'
       ? (row.polygon_geojson as Zone['polygonGeoJson'])
       : undefined,
+  keywords: Array.isArray(row.keywords) ? row.keywords.map((kw) => String(kw)) : [],
 });
 
 const fallbackZones = () => {
@@ -45,6 +46,7 @@ export async function createZone(data: Partial<Zone>): Promise<Zone> {
     name: data.name ?? 'Nueva zona',
     color: data.color ?? '#6b7280',
     polygon_geojson: data.polygonGeoJson ?? null,
+    keywords: data.keywords ?? [],
   };
 
   const { data: inserted, error } = await supabase.from('zones').insert(payload).select('*').single();
@@ -58,6 +60,7 @@ export async function updateZone(id: string, data: Partial<Zone>): Promise<Zone 
     ...(data.name !== undefined ? { name: data.name } : {}),
     ...(data.color !== undefined ? { color: data.color } : {}),
     ...(data.polygonGeoJson !== undefined ? { polygon_geojson: data.polygonGeoJson } : {}),
+    ...(data.keywords !== undefined ? { keywords: data.keywords } : {}),
     updated_at: new Date().toISOString(),
   };
 

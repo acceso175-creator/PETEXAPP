@@ -26,6 +26,7 @@ type DriverStop = {
   id: string;
   stop_order: number;
   title: string | null;
+  customer_name: string | null;
   address: string | null;
   status: StopStatus;
 };
@@ -96,7 +97,7 @@ export default function DriverHomePage() {
 
         const { data: stopsData, error: stopsError } = await supabase
           .from('route_stops')
-          .select('id,stop_order,title,address,status')
+          .select('id,stop_order,title,address,address_text,meta')
           .eq('route_id', routeData.id)
           .order('stop_order', { ascending: true });
 
@@ -109,8 +110,13 @@ export default function DriverHomePage() {
             id: String(stop.id),
             stop_order: Number(stop.stop_order ?? 0),
             title: stop.title ? String(stop.title) : null,
-            address: stop.address ? String(stop.address) : null,
-            status: parseStopStatus(stop.status),
+            customer_name:
+              stop.meta && typeof stop.meta === 'object' && 'customer_name' in stop.meta && stop.meta.customer_name
+                ? String(stop.meta.customer_name)
+                : null,
+            address:
+              stop.address ? String(stop.address) : stop.address_text ? String(stop.address_text) : null,
+            status: 'pending',
           }))
         );
       } catch (loadError) {
@@ -180,7 +186,7 @@ export default function DriverHomePage() {
               {stops.map((stop) => (
                 <div key={stop.id} className="flex items-start justify-between rounded-lg border border-slate-200 p-3">
                   <div>
-                    <p className="text-sm font-medium text-slate-900">#{stop.stop_order} · {stop.title || 'Parada sin título'}</p>
+                    <p className="text-sm font-medium text-slate-900">#{stop.stop_order} · {stop.title || stop.customer_name || stop.address || 'Parada'}</p>
                     <p className="text-xs text-slate-500">{stop.address || 'Dirección pendiente'}</p>
                   </div>
                   <div className="ml-2 flex items-center gap-1 text-xs capitalize text-slate-500">

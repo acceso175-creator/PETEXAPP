@@ -1,5 +1,70 @@
 [
   {
+    "date": "2026-02-20",
+    "title": "Ruteo masivo server-side: deliveries + route_stops con delivery_id",
+    "highlights": [
+      "Se eliminó dependencia de columnas fantasma en deliveries: el endpoint usa columnas core y mueve campos variables del CSV a meta jsonb.",
+      "Se movió la creación masiva a un endpoint backend admin con service role para insertar routes, deliveries y route_stops de forma consistente.",
+      "El endpoint valida filas, asigna zona por keywords, agrupa por modo de asignación y crea rutas en chunks de 150 pedidos por ruta.",
+      "Cada ruta creada inserta primero deliveries y luego route_stops con delivery_id obligatorio, stop_order, title, address_text, phone y meta.",
+      "Se añadieron ajustes de schema para deliveries/route_stops (tracking_code, address_text, zone_id, meta, FK delivery_id) y reload de schema cache en migración.",
+      "En /admin/routes se mantiene preview de válidas/inválidas y el botón Crear rutas y asignar ahora consume el endpoint server-side con resumen de resultado.",
+      "Se actualizó el resumen de login para reflejar que el ruteo masivo ya crea deliveries + stops con delivery_id estable."
+    ]
+  },
+  {
+    "date": "2026-02-16",
+    "title": "Fix del panel de ruteo masivo: importador flexible + schema/RLS normalizado",
+    "highlights": [
+      "Se reforzó el schema para ruteo masivo: zones.color (default #6B7280), route_stops.title (default '') y políticas RLS admin CRUD en routes/route_stops con is_admin().",
+      "Se corrigió el importador CSV con mapeo tolerante de encabezados para evitar casos de 0 pedidos válidos y mostrar errores por fila inválida.",
+      "Se estabilizó la creación de rutas chunked (150) en modo driver único y por zona, insertando stops con route_id/position/stop_order/title/address_text/meta.",
+      "Se alineó route_stops al schema real (delivery_id/address/phone) para ruteo masivo estable.",
+      "Se corrigió ruteo masivo agregando carrier por defecto/inferido para shipments.",
+      "Se alineó el importador al schema real de shipments (address_line/recipient_*).",
+      "Se corrigió accesibilidad del diálogo y se estabilizó carga por CSV (XLSX con fallback).",
+      "Se corrigió carga de zonas (evita 400 por keywords) y se habilitó lectura de XLSX (con fallback a CSV).",
+      "Se corrigió el importador CSV/XLSX de /admin/routes con mapeo tolerante de encabezados (order_id, cliente, teléfono, dirección, ciudad, CP y zona) para evitar casos de '0 pedidos válidos' cuando sí hay filas.",
+      "El preview ahora muestra conteo de filas válidas/inválidas, primeras 20 filas y errores por registro (por ejemplo falta dirección o datos mínimos).",
+      "La creación masiva de rutas quedó estable en modo driver único y driver por zona, con segmentación automática en chunks de 150 pedidos por ruta.",
+      "Se normalizó route_stops para insertar datos mínimos de operación (position, title, address_text y meta) manteniendo compatibilidad con stop_order/address/status.",
+      "Se añadieron fixes de esquema para zones.color (default #6B7280) y route_stops.title (default ''), además de RLS admin FOR ALL en routes y route_stops con is_admin().",
+      "La vista del driver ahora muestra título de parada con fallback robusto: title || recipient_name || address_line1 || 'Parada'."
+    ]
+  },
+  {
+    "date": "2026-02-15",
+    "title": "Ruteo masivo por Excel/CSV con segmentación por zonas y drivers",
+    "highlights": [
+      "Admin /admin/routes ahora permite subir pedidos por archivo (CSV y XLSX cuando la librería está disponible), previsualizar filas y validar dirección obligatoria.",
+      "Se agregó asignación automática de zona por keywords/CP y generación de rutas por zona en bloques de hasta 150 pedidos por ruta, con selección de driver único o por zona.",
+      "El alta masiva crea shipments, routes y route_stops en cadena y muestra resumen humano de rutas creadas y conteos por zona.",
+      "Se reforzó el modelo/RLS en Supabase para shipments, routes y route_stops; drivers solo leen su operación y admin mantiene CRUD completo.",
+      "Admin /admin/zones ahora permite editar keywords tipo chips para mejorar la clasificación automática de direcciones.",
+      "Driver /app muestra paradas de la ruta de hoy desde route_stops + shipments con estados vacíos claros."
+    ]
+  },
+  {
+    "date": "2026-02-14",
+    "title": "Fix RLS en rutas: admin crea sin 42501 y driver ve solo lo suyo",
+    "highlights": [
+      "Se ajustaron políticas RLS en public.routes y public.route_stops para que usuarios admin autenticados tengan FOR ALL (crear/editar/eliminar) usando public.is_admin().",
+      "Se definieron políticas de lectura para drivers autenticados que solo permiten ver rutas con driver_profile_id = auth.uid() y sus paradas asociadas vía EXISTS sobre routes.",
+      "Se retiró la variante de políticas 'today' para evitar bloqueos inesperados y alinear el acceso con la asignación real por driver.",
+      "Con esto, /admin/routes puede crear rutas sin error 42501 y la app del driver mantiene visibilidad restringida a sus propios datos."
+    ]
+  },
+  {
+    "date": "2026-02-13",
+    "title": "Fix de alineación routes: driver_profile_id real en admin",
+    "highlights": [
+      "Se agregó una migración de compatibilidad para asegurar public.routes.driver_profile_id con foreign key a public.profiles(id) e índice compuesto (driver_profile_id, route_date).",
+      "Si la base tenía columnas legacy (driver_id o driver_user_id), ahora se migran automáticamente a driver_profile_id sin perder asignaciones existentes.",
+      "Los queries del frontend para rutas quedaron estandarizados a nombres reales del schema (driver_profile_id en routes y route_id/stop_order en route_stops).",
+      "Con este ajuste, /admin/routes y la vista del driver consultan el mismo contrato de datos en Supabase."
+    ]
+  },
+  {
     "date": "2026-02-12",
     "title": "Asignación mínima de rutas admin→driver en producción",
     "highlights": [

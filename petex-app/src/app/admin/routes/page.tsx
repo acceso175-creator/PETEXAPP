@@ -7,29 +7,55 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { LoadingScreen } from '@/components/ui/loading-spinner';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { getSupabaseClient, supabaseConfigError } from '@/lib/supabase/client';
-import { Plus, Trash2, ArrowDown, ArrowUp } from 'lucide-react';
+import { Upload, Route, MapPin, AlertTriangle } from 'lucide-react';
 
-type DriverProfile = {
-  id: string;
-  full_name: string | null;
-  email: string | null;
+type DriverProfile = { id: string; full_name: string | null; email: string | null };
+type Zone = { id: string; name: string; color: string };
+type NormalizedRow = {
+  order_id: string;
+  customer_name: string;
+  phone: string;
+  address_line1: string;
+  city: string;
+  postal_code: string;
+  zone_hint: string;
+  carrier: string;
+  notes: string;
+  raw_row: Record<string, unknown>;
+  is_valid: boolean;
+  errors: string[];
+  zone_id: string | null;
+  zone_reason: string;
 };
 
-type RouteStopForm = {
-  id?: string;
-  localId: string;
-  stop_order: number;
-  title: string;
-  address: string;
-  lat: string;
-  lng: string;
-  status: string;
+type CreatedRouteResult = { group: string; driver: string; shipments: number; routes: number };
+
+type BulkRoutesResponse = {
+  summary: { routes_created: number; deliveries_imported: number; invalid_rows: number };
+  groups: CreatedRouteResult[];
+  invalid_rows: Array<{ row_number: number; reason: string }>;
 };
 
-type RouteRow = {
-  id: string;
-  status: string;
+const CHUNK_SIZE = 150;
+
+const ALIASES: Record<string, string[]> = {
+  order_id: ['order_id', 'pedido', 'pedido_id', 'id_pedido'],
+  customer_name: ['customer_name', 'cliente', 'nombre', 'full_name'],
+  phone: ['phone', 'telefono', 'tel', 'celular'],
+  address_line1: ['address', 'direccion', 'domicilio', 'address_line1'],
+  city: ['city', 'ciudad'],
+  postal_code: ['postal_code', 'cp', 'zip'],
+  zone_hint: ['zone', 'zona', 'zone_hint'],
+  carrier: ['carrier', 'paqueteria', 'paquetería', 'courier', 'transportadora'],
+  notes: ['notes', 'nota', 'notas', 'observaciones'],
 };
 
 const todayLocalIso = () => {
@@ -38,32 +64,152 @@ const todayLocalIso = () => {
   return localDate.toISOString().slice(0, 10);
 };
 
-const createStopDraft = (index: number): RouteStopForm => ({
-  localId: `new-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-  stop_order: index + 1,
-  title: '',
-  address: '',
-  lat: '',
-  lng: '',
-  status: 'pending',
-});
+const inferCarrierFromTracking = (trackingCode: string) => {
+  const code = trackingCode.trim().toUpperCase();
+  if (code.startsWith('ML-')) return 'MercadoLibre';
+  if (code.startsWith('SHE-')) return 'SHEIN';
+  if (code.startsWith('JT-')) return 'J&T';
+  return 'PETEX';
+};
+
+const normalizeHeader = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const parseDelimitedLine = (line: string, delimiter: string) => {
+  const cells: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    const next = line[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (!inQuotes && char === delimiter) {
+      cells.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  cells.push(current.trim());
+  return cells;
+};
+
+const detectDelimiter = (headerLine: string) => {
+  const delimiters = [',', ';', '\t'];
+  const counts = delimiters.map((d) => ({ d, count: headerLine.split(d).length }));
+  counts.sort((a, b) => b.count - a.count);
+  return counts[0].d;
+};
+
+const parseCsv = async (file: File): Promise<Record<string, unknown>[]> => {
+  const text = (await file.text()).replace(/^\uFEFF/, '');
+  const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (lines.length < 2) return [];
+
+  const delimiter = detectDelimiter(lines[0]);
+  const headers = parseDelimitedLine(lines[0], delimiter).map((h) => h.trim());
+
+  return lines.slice(1).map((line) => {
+    const values = parseDelimitedLine(line, delimiter);
+    const row: Record<string, unknown> = {};
+    headers.forEach((header, index) => {
+      row[header] = values[index] ?? '';
+    });
+    return row;
+  });
+};
+
+const getValueByAliases = (row: Record<string, unknown>, aliases: string[]) => {
+  const normalizedEntries = Object.entries(row).map(([k, v]) => [normalizeHeader(k), v] as const);
+  for (const alias of aliases) {
+    const hit = normalizedEntries.find(([k]) => k === normalizeHeader(alias));
+    if (!hit) continue;
+    const v = hit[1];
+    if (v == null) continue;
+    const txt = String(v).trim();
+    if (txt.length > 0) return txt;
+  }
+  return '';
+};
+
+const normalizeRows = (rows: Record<string, unknown>[]): NormalizedRow[] =>
+  rows.map((row) => {
+    const order_id = getValueByAliases(row, ALIASES.order_id);
+    const customer_name = getValueByAliases(row, ALIASES.customer_name);
+    const phone = getValueByAliases(row, ALIASES.phone);
+    const address_line1 = getValueByAliases(row, ALIASES.address_line1);
+    const city = getValueByAliases(row, ALIASES.city);
+    const postal_code = getValueByAliases(row, ALIASES.postal_code);
+    const zone_hint = getValueByAliases(row, ALIASES.zone_hint);
+    const carrier = getValueByAliases(row, ALIASES.carrier);
+    const notes = getValueByAliases(row, ALIASES.notes);
+
+    const errors: string[] = [];
+    if (!order_id) errors.push('Falta order_id/pedido');
+    if (!address_line1) errors.push('Falta dirección');
+    if (!phone && !customer_name) errors.push('Debe tener teléfono o cliente');
+
+    return {
+      order_id,
+      customer_name,
+      phone,
+      address_line1,
+      city,
+      postal_code,
+      zone_hint,
+      carrier,
+      notes,
+      raw_row: row,
+      is_valid: errors.length === 0,
+      errors,
+      zone_id: null,
+      zone_reason: 'sin asignar',
+    };
+  });
+
+const chunk = <T,>(items: T[], size: number): T[][] => {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+};
 
 export default function AdminRoutesPage() {
   const [drivers, setDrivers] = useState<DriverProfile[]>([]);
-  const [selectedDriverId, setSelectedDriverId] = useState('');
-  const [route, setRoute] = useState<RouteRow | null>(null);
-  const [stops, setStops] = useState<RouteStopForm[]>([]);
-  const [removedStopIds, setRemovedStopIds] = useState<string[]>([]);
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [rows, setRows] = useState<NormalizedRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [singleDriverId, setSingleDriverId] = useState('');
+  const [useSingleDriver, setUseSingleDriver] = useState(true);
+  const [driverByGroup, setDriverByGroup] = useState<Record<string, string>>({});
+  const [result, setResult] = useState<CreatedRouteResult[]>([]);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
 
-  const selectedDriver = useMemo(
-    () => drivers.find((driver) => driver.id === selectedDriverId) ?? null,
-    [drivers, selectedDriverId]
-  );
+  const validRows = useMemo(() => rows.filter((row) => row.is_valid), [rows]);
+  const invalidRows = useMemo(() => rows.filter((row) => !row.is_valid), [rows]);
+  const zoneMap = useMemo(() => new Map(zones.map((z) => [z.id, z])), [zones]);
 
   useEffect(() => {
-    const loadDrivers = async () => {
+    const loadData = async () => {
       if (supabaseConfigError) {
         toast.error('Supabase no está configurado en este entorno.');
         setIsLoading(false);
@@ -72,361 +218,291 @@ export default function AdminRoutesPage() {
 
       try {
         const supabase = getSupabaseClient();
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('id,full_name,email')
-          .eq('role', 'driver')
-          .order('full_name', { ascending: true });
+        const [{ data: profiles, error: profilesError }, { data: zonesData, error: zonesError }] =
+          await Promise.all([
+            supabase.from('profiles').select('id,full_name,email').eq('role', 'driver').order('full_name'),
+            supabase.from('zones').select('id,name,color').order('name'),
+          ]);
 
-        if (error) throw error;
+        if (profilesError) throw profilesError;
+        if (zonesError) throw zonesError;
 
-        const nextDrivers = (data ?? []).map((row) => ({
-          id: String(row.id),
-          full_name: row.full_name ? String(row.full_name) : null,
-          email: row.email ? String(row.email) : null,
+        const nextDrivers = (profiles ?? []).map((d) => ({
+          id: String(d.id),
+          full_name: d.full_name ? String(d.full_name) : null,
+          email: d.email ? String(d.email) : null,
+        }));
+
+        const nextZones = (zonesData ?? []).map((z) => ({
+          id: String(z.id),
+          name: String(z.name ?? 'Zona'),
+          color: z.color ? String(z.color) : '#6B7280',
         }));
 
         setDrivers(nextDrivers);
-        if (nextDrivers.length > 0) {
-          setSelectedDriverId(nextDrivers[0].id);
-        }
+        setZones(nextZones);
+        if (nextDrivers[0]) setSingleDriverId(nextDrivers[0].id);
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'No se pudieron cargar los drivers');
+        toast.error(error instanceof Error ? error.message : 'No se pudo cargar catálogo de rutas');
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadDrivers();
+    loadData();
   }, []);
 
-  useEffect(() => {
-    const loadTodayRoute = async () => {
-      if (!selectedDriverId || supabaseConfigError) {
-        setRoute(null);
-        setStops([]);
-        setRemovedStopIds([]);
-        return;
-      }
-
-      try {
-        const supabase = getSupabaseClient();
-        const today = todayLocalIso();
-        const { data: routeData, error: routeError } = await supabase
-          .from('routes')
-          .select('id,status')
-          .eq('driver_profile_id', selectedDriverId)
-          .eq('route_date', today)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (routeError) throw routeError;
-
-        if (!routeData) {
-          setRoute(null);
-          setStops([]);
-          setRemovedStopIds([]);
-          return;
-        }
-
-        setRoute({ id: String(routeData.id), status: String(routeData.status ?? 'assigned') });
-
-        const { data: stopsData, error: stopsError } = await supabase
-          .from('route_stops')
-          .select('id,stop_order,title,address,lat,lng,status')
-          .eq('route_id', routeData.id)
-          .order('stop_order', { ascending: true });
-
-        if (stopsError) throw stopsError;
-
-        setStops(
-          (stopsData ?? []).map((row, index) => ({
-            id: String(row.id),
-            localId: `saved-${row.id}`,
-            stop_order: Number(row.stop_order ?? index + 1),
-            title: row.title ? String(row.title) : '',
-            address: row.address ? String(row.address) : '',
-            lat: row.lat != null ? String(row.lat) : '',
-            lng: row.lng != null ? String(row.lng) : '',
-            status: row.status ? String(row.status) : 'pending',
-          }))
-        );
-        setRemovedStopIds([]);
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'No se pudo cargar la ruta del driver');
-      }
-    };
-
-    loadTodayRoute();
-  }, [selectedDriverId]);
-
-  const reindexStops = (nextStops: RouteStopForm[]) =>
-    nextStops.map((stop, index) => ({ ...stop, stop_order: index + 1 }));
-
-  const handleCreateRouteToday = async () => {
-    if (!selectedDriverId) {
-      toast.error('Selecciona un driver antes de crear la ruta.');
-      return;
+  const groupedRows = useMemo(() => {
+    const map = new Map<string, NormalizedRow[]>();
+    const source = validRows;
+    if (useSingleDriver) {
+      map.set('global', source);
+      return map;
     }
 
-    if (route) {
-      toast.success('Este driver ya tiene ruta para hoy.');
+    for (const row of source) {
+      const key = row.zone_id ?? (row.zone_hint.trim().toLowerCase() || 'sin-zona');
+      map.set(key, [...(map.get(key) ?? []), row]);
+    }
+    return map;
+  }, [useSingleDriver, validRows]);
+
+  const handleFile = async (file: File) => {
+    try {
+      let rawRows: Record<string, unknown>[] = [];
+      const lower = file.name.toLowerCase();
+      if (lower.endsWith('.csv')) rawRows = await parseCsv(file);
+      else throw new Error('Formato no soportado. Usa únicamente .csv');
+
+      const normalized = normalizeRows(rawRows);
+      setRows(normalized);
+      setResult([]);
+      setIsImportDialogOpen(false);
+      toast.success(`Archivo cargado: ${normalized.filter((r) => r.is_valid).length} pedidos válidos.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo leer el archivo');
+    }
+  };
+
+  const assignZones = () => {
+    const next = rows.map((row) => {
+      if (!row.is_valid) return row;
+      const search = [row.address_line1, row.city, row.postal_code, row.zone_hint].join(' ').toLowerCase();
+      const winner = zones.find((zone) => {
+        const zoneName = zone.name.toLowerCase();
+        return search.includes(zoneName) || (row.zone_hint && zoneName.includes(row.zone_hint.toLowerCase()));
+      });
+      return {
+        ...row,
+        zone_id: winner?.id ?? null,
+        zone_reason: winner ? `match ${winner.name}` : 'sin zona',
+      };
+    });
+    setRows(next);
+    toast.success('Zonas asignadas por nombre/pista de zona.');
+  };
+
+  const createRoutes = async () => {
+    if (!rows.length) {
+      toast.error('Carga un archivo antes de crear rutas.');
       return;
     }
 
     try {
+      setIsSaving(true);
+
       const supabase = getSupabaseClient();
-      const today = todayLocalIso();
-      const { data, error } = await supabase
-        .from('routes')
-        .insert({
-          driver_profile_id: selectedDriverId,
-          route_date: today,
-          status: 'assigned',
-        })
-        .select('id,status')
-        .single();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-      if (error) throw error;
-
-      setRoute({ id: String(data.id), status: String(data.status ?? 'assigned') });
-      setStops([]);
-      setRemovedStopIds([]);
-      toast.success('Ruta de hoy creada. Ahora agrega las paradas.');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo crear la ruta');
-    }
-  };
-
-  const handleStopChange = (localId: string, field: keyof RouteStopForm, value: string) => {
-    setStops((prev) =>
-      prev.map((stop) => (stop.localId === localId ? { ...stop, [field]: value } : stop))
-    );
-  };
-
-  const handleAddStop = () => {
-    setStops((prev) => [...prev, createStopDraft(prev.length)]);
-  };
-
-  const moveStop = (index: number, direction: -1 | 1) => {
-    setStops((prev) => {
-      const toIndex = index + direction;
-      if (toIndex < 0 || toIndex >= prev.length) return prev;
-      const next = [...prev];
-      const [item] = next.splice(index, 1);
-      next.splice(toIndex, 0, item);
-      return reindexStops(next);
-    });
-  };
-
-  const handleDeleteStop = (localId: string) => {
-    setStops((prev) => {
-      const stop = prev.find((item) => item.localId === localId);
-      if (stop?.id) {
-        setRemovedStopIds((existing) => [...existing, stop.id as string]);
-      }
-      return reindexStops(prev.filter((item) => item.localId !== localId));
-    });
-  };
-
-  const handleSave = async () => {
-    if (!route) {
-      toast.error('Primero crea una ruta para hoy.');
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const supabase = getSupabaseClient();
-
-      const normalizedStops = reindexStops(stops);
-      const updateRows = normalizedStops.filter((stop) => stop.id);
-      const insertRows = normalizedStops.filter((stop) => !stop.id);
-
-      for (const stop of updateRows) {
-        const { error } = await supabase
-          .from('route_stops')
-          .update({
-            stop_order: stop.stop_order,
-            title: stop.title.trim() || null,
-            address: stop.address.trim() || null,
-            lat: stop.lat.trim() ? Number(stop.lat) : null,
-            lng: stop.lng.trim() ? Number(stop.lng) : null,
-            status: stop.status,
-          })
-          .eq('id', stop.id as string);
-
-        if (error) throw error;
+      if (!session?.access_token) {
+        throw new Error('Sesión inválida. Inicia sesión nuevamente.');
       }
 
-      if (insertRows.length > 0) {
-        const { error } = await supabase.from('route_stops').insert(
-          insertRows.map((stop) => ({
-            route_id: route.id,
-            stop_order: stop.stop_order,
-            title: stop.title.trim() || null,
-            address: stop.address.trim() || null,
-            lat: stop.lat.trim() ? Number(stop.lat) : null,
-            lng: stop.lng.trim() ? Number(stop.lng) : null,
-            status: stop.status,
-          }))
+      const response = await fetch('/api/admin/bulk-routes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          rows,
+          useSingleDriver,
+          singleDriverId,
+          driverByGroup,
+          routeDate: todayLocalIso(),
+        }),
+      });
+
+      const payload = (await response.json()) as BulkRoutesResponse | { error?: string };
+      if (!response.ok) {
+        throw new Error((payload as { error?: string }).error ?? 'No se pudo crear el ruteo masivo');
+      }
+
+      const successPayload = payload as BulkRoutesResponse;
+      setResult(successPayload.groups ?? []);
+
+      if (successPayload.invalid_rows?.length) {
+        toast.warning(
+          `Rutas creadas: ${successPayload.summary.routes_created}. Importados: ${successPayload.summary.deliveries_imported}. Inválidos: ${successPayload.summary.invalid_rows}.`
         );
-
-        if (error) throw error;
+      } else {
+        toast.success(
+          `Rutas creadas: ${successPayload.summary.routes_created}. Importados: ${successPayload.summary.deliveries_imported}.`
+        );
       }
-
-      if (removedStopIds.length > 0) {
-        const { error } = await supabase.from('route_stops').delete().in('id', removedStopIds);
-        if (error) throw error;
-      }
-
-      toast.success('Ruta guardada correctamente');
-
-      const { data: stopsData, error: stopsError } = await supabase
-        .from('route_stops')
-        .select('id,stop_order,title,address,lat,lng,status')
-        .eq('route_id', route.id)
-        .order('stop_order', { ascending: true });
-
-      if (stopsError) throw stopsError;
-
-      setStops(
-        (stopsData ?? []).map((row, index) => ({
-          id: String(row.id),
-          localId: `saved-${row.id}`,
-          stop_order: Number(row.stop_order ?? index + 1),
-          title: row.title ? String(row.title) : '',
-          address: row.address ? String(row.address) : '',
-          lat: row.lat != null ? String(row.lat) : '',
-          lng: row.lng != null ? String(row.lng) : '',
-          status: row.status ? String(row.status) : 'pending',
-        }))
-      );
-      setRemovedStopIds([]);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo guardar la ruta');
+      toast.error(error instanceof Error ? error.message : 'Error creando rutas');
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (isLoading) {
-    return <LoadingScreen message="Cargando asignación de rutas..." />;
-  }
+  if (isLoading) return <LoadingScreen message="Cargando módulo de ruteo masivo..." />;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Asignar ruta a driver</h1>
-        <p className="text-slate-500">Crea la ruta de hoy y administra sus paradas.</p>
-      </div>
-
-      <Card className="p-4 space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="driver-selector">Driver</Label>
-          <select
-            id="driver-selector"
-            value={selectedDriverId}
-            onChange={(event) => setSelectedDriverId(event.target.value)}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
-          >
-            {!drivers.length ? <option value="">Sin drivers disponibles</option> : null}
-            {drivers.map((driver) => (
-              <option key={driver.id} value={driver.id}>
-                {driver.full_name || driver.email || driver.id}
-              </option>
-            ))}
-          </select>
+    <div className="space-y-4 p-4 sm:p-6">
+      <Card className="p-4">
+        <h1 className="text-xl font-semibold text-slate-900">Ruteo masivo por CSV</h1>
+        <p className="text-sm text-slate-500">Carga CSV y crea rutas chunked de máximo 150 pedidos.</p>
+        <div className="mt-4">
+          <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Upload className="mr-2 h-4 w-4" /> Cargar CSV
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogTitle className="sr-only">Importar pedidos por CSV</DialogTitle>
+              <DialogDescription className="sr-only">
+                Selecciona un archivo CSV para importar pedidos y generar rutas masivas.
+              </DialogDescription>
+              <div className="space-y-2">
+                <Label htmlFor="file">Archivo CSV</Label>
+                <Input
+                  id="file"
+                  type="file"
+                  accept=".csv"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) handleFile(file);
+                  }}
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={handleCreateRouteToday} className="bg-orange-600 hover:bg-orange-700" disabled={!selectedDriverId || Boolean(route)}>
-            Crear ruta de hoy
-          </Button>
-          {route ? <p className="text-sm text-emerald-700">Ruta activa para hoy: {route.id.slice(0, 8)}…</p> : <p className="text-sm text-slate-500">Este driver aún no tiene ruta para hoy.</p>}
-        </div>
-        {selectedDriver ? (
-          <p className="text-xs text-slate-500">
-            Driver seleccionado: <span className="font-medium text-slate-700">{selectedDriver.full_name || selectedDriver.email || selectedDriver.id}</span>
-          </p>
-        ) : null}
       </Card>
 
-      <Card className="p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">Paradas</h2>
-            <p className="text-xs text-slate-500">CRUD básico: agrega, reordena y elimina antes de guardar.</p>
-          </div>
-          <Button variant="outline" onClick={handleAddStop} disabled={!route}>
-            <Plus className="mr-2 h-4 w-4" />
-            Agregar parada
+      <Card className="p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={assignZones} disabled={!rows.length}>
+            <MapPin className="mr-2 h-4 w-4" />Asignar zonas
+          </Button>
+          <Button variant={useSingleDriver ? 'default' : 'outline'} onClick={() => setUseSingleDriver(true)}>
+            Driver único
+          </Button>
+          <Button variant={!useSingleDriver ? 'default' : 'outline'} onClick={() => setUseSingleDriver(false)}>
+            Driver por zona
           </Button>
         </div>
 
-        {!route ? (
-          <p className="rounded-md border border-dashed border-slate-300 p-4 text-sm text-slate-500">
-            Primero crea la ruta de hoy para habilitar la edición de paradas.
-          </p>
-        ) : stops.length === 0 ? (
-          <p className="rounded-md border border-dashed border-slate-300 p-4 text-sm text-slate-500">
-            Esta ruta todavía no tiene paradas. Agrega la primera parada para comenzar.
-          </p>
+        {useSingleDriver ? (
+          <div className="mt-3 space-y-2">
+            <Label>Driver</Label>
+            <select
+              className="w-full rounded-md border border-slate-200 p-2 text-sm"
+              value={singleDriverId}
+              onChange={(event) => setSingleDriverId(event.target.value)}
+            >
+              <option value="">Selecciona driver</option>
+              {drivers.map((driver) => (
+                <option key={driver.id} value={driver.id}>
+                  {driver.full_name ?? driver.email ?? driver.id}
+                </option>
+              ))}
+            </select>
+          </div>
         ) : (
-          <div className="space-y-3">
-            {stops.map((stop, index) => (
-              <Card key={stop.localId} className="p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-slate-900">Parada #{stop.stop_order}</p>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => moveStop(index, -1)} disabled={index === 0}>
-                      <ArrowUp className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => moveStop(index, 1)} disabled={index === stops.length - 1}>
-                      <ArrowDown className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleDeleteStop(stop.localId)}>
-                      <Trash2 className="h-4 w-4 text-red-600" />
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="grid gap-2 md:grid-cols-2">
-                  <Input
-                    placeholder="Título o nombre del destinatario"
-                    value={stop.title}
-                    onChange={(event) => handleStopChange(stop.localId, 'title', event.target.value)}
-                  />
-                  <Input
-                    placeholder="Dirección"
-                    value={stop.address}
-                    onChange={(event) => handleStopChange(stop.localId, 'address', event.target.value)}
-                  />
-                  <Input
-                    type="number"
-                    step="any"
-                    placeholder="Latitud"
-                    value={stop.lat}
-                    onChange={(event) => handleStopChange(stop.localId, 'lat', event.target.value)}
-                  />
-                  <Input
-                    type="number"
-                    step="any"
-                    placeholder="Longitud"
-                    value={stop.lng}
-                    onChange={(event) => handleStopChange(stop.localId, 'lng', event.target.value)}
-                  />
-                </div>
-              </Card>
+          <div className="mt-3 space-y-2">
+            {[...groupedRows.keys()].map((groupKey) => (
+              <div key={groupKey} className="rounded border border-slate-200 p-2">
+                <p className="mb-1 text-sm font-medium">
+                  {(zoneMap.get(groupKey)?.name ?? (groupedRows.get(groupKey)?.[0]?.zone_hint || 'Sin zona'))}
+                </p>
+                <select
+                  className="w-full rounded-md border border-slate-200 p-2 text-sm"
+                  value={driverByGroup[groupKey] ?? ''}
+                  onChange={(event) =>
+                    setDriverByGroup((prev) => ({ ...prev, [groupKey]: event.target.value }))
+                  }
+                >
+                  <option value="">Selecciona driver</option>
+                  {drivers.map((driver) => (
+                    <option key={driver.id} value={driver.id}>
+                      {driver.full_name ?? driver.email ?? driver.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
             ))}
           </div>
         )}
 
-        <Button onClick={handleSave} disabled={!route || isSaving} className="bg-orange-600 hover:bg-orange-700">
-          {isSaving ? 'Guardando...' : 'Guardar'}
+        <Button
+          className="mt-4 bg-orange-600 hover:bg-orange-700"
+          onClick={createRoutes}
+          disabled={isSaving || !validRows.length}
+        >
+          <Route className="mr-2 h-4 w-4" />Crear rutas y asignar
         </Button>
       </Card>
+
+      <Card className="p-4">
+        <div className="mb-2 flex items-center gap-2">
+          <Upload className="h-4 w-4 text-slate-500" />
+          <h2 className="text-sm font-semibold">
+            Preview: {validRows.length} válidas / {invalidRows.length} inválidas
+          </h2>
+        </div>
+
+        {!rows.length ? <p className="text-sm text-slate-500">Sube un archivo para previsualizar.</p> : null}
+
+        {!!rows.length ? (
+          <div className="space-y-2">
+            {rows.slice(0, 20).map((row, index) => (
+              <div key={`${row.order_id || 'sin-id'}-${index}`} className="rounded border border-slate-200 p-2 text-sm">
+                <p>
+                  <strong>{row.order_id || 'Sin order_id'}</strong> · {row.customer_name || 'Sin cliente'} ·{' '}
+                  {row.phone || 'Sin teléfono'} · {row.carrier || inferCarrierFromTracking(row.order_id)}
+                </p>
+                <p className="text-slate-600">{row.address_line1 || 'Dirección pendiente'}</p>
+                <p className="text-xs text-slate-500">
+                  Zona: {row.zone_id ? zoneMap.get(row.zone_id)?.name ?? row.zone_id : row.zone_hint || 'Sin zona'} ·{' '}
+                  {row.zone_reason}
+                </p>
+                {!row.is_valid ? (
+                  <p className="mt-1 flex items-center gap-1 text-xs text-red-600">
+                    <AlertTriangle className="h-3.5 w-3.5" />{row.errors.join(' · ')}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </Card>
+
+      {result.length ? (
+        <Card className="p-4">
+          <h3 className="text-sm font-semibold">Resultado</h3>
+          {result.map((item, index) => (
+            <p key={`${item.group}-${index}`} className="text-sm text-slate-700">
+              Grupo {item.group} · Driver {item.driver} · {item.shipments} pedidos · {item.routes} rutas
+            </p>
+          ))}
+        </Card>
+      ) : null}
     </div>
   );
 }
