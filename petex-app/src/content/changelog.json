@@ -1,5 +1,17 @@
 [
   {
+    "date": "2026-02-20",
+    "title": "Ruteo masivo server-side: deliveries + route_stops con delivery_id",
+    "highlights": [
+      "Se movió la creación masiva a un endpoint backend admin con service role para insertar routes, deliveries y route_stops de forma consistente.",
+      "El endpoint valida filas, asigna zona por keywords, agrupa por modo de asignación y crea rutas en chunks de 150 pedidos por ruta.",
+      "Cada ruta creada inserta primero deliveries y luego route_stops con delivery_id obligatorio, stop_order, title, address_text, phone y meta.",
+      "Se añadieron ajustes de schema para deliveries/route_stops (tracking_code, address_text, zone_id, meta, FK delivery_id) y reload de schema cache en migración.",
+      "En /admin/routes se mantiene preview de válidas/inválidas y el botón Crear rutas y asignar ahora consume el endpoint server-side con resumen de resultado.",
+      "Se actualizó el resumen de login para reflejar que el ruteo masivo ya crea deliveries + stops con delivery_id estable."
+    ]
+  },
+  {
     "date": "2026-02-16",
     "title": "Fix del panel de ruteo masivo: importador flexible + schema/RLS normalizado",
     "highlights": [

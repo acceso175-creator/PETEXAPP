@@ -38,6 +38,12 @@ type NormalizedRow = {
 
 type CreatedRouteResult = { group: string; driver: string; shipments: number; routes: number };
 
+type BulkRoutesResponse = {
+  summary: { routes_created: number; deliveries_imported: number; invalid_rows: number };
+  groups: CreatedRouteResult[];
+  invalid_rows: Array<{ row_number: number; reason: string }>;
+};
+
 const CHUNK_SIZE = 150;
 
 const ALIASES: Record<string, string[]> = {
@@ -297,100 +303,55 @@ export default function AdminRoutesPage() {
   };
 
   const createRoutes = async () => {
-    if (!validRows.length) {
-      toast.error('No hay filas válidas para crear rutas.');
+    if (!rows.length) {
+      toast.error('Carga un archivo antes de crear rutas.');
       return;
     }
 
     try {
       setIsSaving(true);
+
       const supabase = getSupabaseClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-      const { data: upserted, error: shipmentError } = await supabase
-        .from('shipments')
-        .upsert(
-          validRows.map((row) => ({
-            tracking_code: row.order_id,
-            carrier: row.carrier || inferCarrierFromTracking(row.order_id),
-            recipient_name: row.customer_name || null,
-            recipient_phone: row.phone || null,
-            city: row.city || null,
-            neighborhood: row.zone_hint || null,
-            address_line: row.address_line1,
-            postal_code: row.postal_code || null,
-            status: 'created',
-            notes: row.notes || null,
-          })),
-          { onConflict: 'tracking_code' }
-        )
-        .select('id,tracking_code,recipient_phone,address_line');
-
-      if (shipmentError) throw shipmentError;
-      const shipmentIdByOrder = new Map<string, string>();
-      (upserted ?? []).forEach((item) => {
-        if (item.tracking_code) shipmentIdByOrder.set(String(item.tracking_code), String(item.id));
-      });
-
-      const created: CreatedRouteResult[] = [];
-      for (const [groupKey, groupRows] of groupedRows.entries()) {
-        const driverId = useSingleDriver ? singleDriverId : driverByGroup[groupKey] ?? '';
-        if (!driverId) throw new Error(`Falta seleccionar driver para el grupo ${groupKey}.`);
-
-        const chunks = chunk(groupRows, CHUNK_SIZE);
-        for (const slice of chunks) {
-          const zoneId = useSingleDriver ? null : slice[0]?.zone_id ?? null;
-          const { data: routeData, error: routeError } = await supabase
-            .from('routes')
-            .insert({
-              route_date: todayLocalIso(),
-              zone_id: zoneId,
-              driver_profile_id: driverId,
-              status: 'active',
-            })
-            .select('id')
-            .single();
-
-          if (routeError) throw routeError;
-
-          const stopsPayload = slice.map((row, index) => {
-            const shipmentId = shipmentIdByOrder.get(row.order_id);
-            if (!shipmentId) throw new Error(`No se encontró shipment para order_id ${row.order_id}`);
-            const title = row.customer_name || row.address_line1 || 'Parada';
-            return {
-              route_id: routeData.id,
-              position: index + 1,
-              stop_order: index + 1,
-              title: row.customer_name || row.order_id || 'Parada',
-              address_text: row.address_line1,
-              meta: {
-                shipment_id: shipmentId,
-                order_id: row.order_id,
-                customer_name: row.customer_name,
-                phone: row.phone,
-                zone_hint: row.zone_hint,
-                city: row.city,
-                postal_code: row.postal_code,
-              },
-            };
-          });
-
-          const { error: stopsError } = await supabase.from('route_stops').insert(stopsPayload);
-          if (stopsError) throw stopsError;
-        }
-
-        created.push({
-          group:
-            groupKey === 'global'
-              ? 'Driver único'
-              : (zoneMap.get(groupKey)?.name ?? (groupRows[0]?.zone_hint || 'Sin zona')),
-          driver: drivers.find((driver) => driver.id === driverId)?.full_name ?? driverId,
-          shipments: groupRows.length,
-          routes: chunks.length,
-        });
+      if (!session?.access_token) {
+        throw new Error('Sesión inválida. Inicia sesión nuevamente.');
       }
 
-      setResult(created);
-      toast.success(`Proceso completado: ${created.reduce((acc, x) => acc + x.routes, 0)} rutas creadas.`);
+      const response = await fetch('/api/admin/bulk-routes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          rows,
+          useSingleDriver,
+          singleDriverId,
+          driverByGroup,
+          routeDate: todayLocalIso(),
+        }),
+      });
+
+      const payload = (await response.json()) as BulkRoutesResponse | { error?: string };
+      if (!response.ok) {
+        throw new Error((payload as { error?: string }).error ?? 'No se pudo crear el ruteo masivo');
+      }
+
+      const successPayload = payload as BulkRoutesResponse;
+      setResult(successPayload.groups ?? []);
+
+      if (successPayload.invalid_rows?.length) {
+        toast.warning(
+          `Rutas creadas: ${successPayload.summary.routes_created}. Importados: ${successPayload.summary.deliveries_imported}. Inválidos: ${successPayload.summary.invalid_rows}.`
+        );
+      } else {
+        toast.success(
+          `Rutas creadas: ${successPayload.summary.routes_created}. Importados: ${successPayload.summary.deliveries_imported}.`
+        );
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Error creando rutas');
     } finally {
