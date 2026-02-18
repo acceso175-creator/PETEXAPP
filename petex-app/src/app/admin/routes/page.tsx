@@ -27,6 +27,7 @@ type NormalizedRow = {
   city: string;
   postal_code: string;
   zone_hint: string;
+  carrier: string;
   notes: string;
   raw_row: Record<string, unknown>;
   is_valid: boolean;
@@ -47,6 +48,7 @@ const ALIASES: Record<string, string[]> = {
   city: ['city', 'ciudad'],
   postal_code: ['postal_code', 'cp', 'zip'],
   zone_hint: ['zone', 'zona', 'zone_hint'],
+  carrier: ['carrier', 'paqueteria', 'paquetería', 'courier', 'transportadora'],
   notes: ['notes', 'nota', 'notas', 'observaciones'],
 };
 
@@ -54,6 +56,14 @@ const todayLocalIso = () => {
   const now = new Date();
   const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
   return localDate.toISOString().slice(0, 10);
+};
+
+const inferCarrierFromTracking = (trackingCode: string) => {
+  const code = trackingCode.trim().toUpperCase();
+  if (code.startsWith('ML-')) return 'MercadoLibre';
+  if (code.startsWith('SHE-')) return 'SHEIN';
+  if (code.startsWith('JT-')) return 'J&T';
+  return 'PETEX';
 };
 
 const normalizeHeader = (value: string) =>
@@ -144,6 +154,7 @@ const normalizeRows = (rows: Record<string, unknown>[]): NormalizedRow[] =>
     const city = getValueByAliases(row, ALIASES.city);
     const postal_code = getValueByAliases(row, ALIASES.postal_code);
     const zone_hint = getValueByAliases(row, ALIASES.zone_hint);
+    const carrier = getValueByAliases(row, ALIASES.carrier);
     const notes = getValueByAliases(row, ALIASES.notes);
 
     const errors: string[] = [];
@@ -159,6 +170,7 @@ const normalizeRows = (rows: Record<string, unknown>[]): NormalizedRow[] =>
       city,
       postal_code,
       zone_hint,
+      carrier,
       notes,
       raw_row: row,
       is_valid: errors.length === 0,
@@ -305,12 +317,13 @@ export default function AdminRoutesPage() {
             neighborhood: row.zone_hint || null,
             address_line: row.address_line1,
             postal_code: row.postal_code || null,
+            carrier: row.carrier || inferCarrierFromTracking(row.order_id),
             status: 'created',
             notes: row.notes || null,
           })),
           { onConflict: 'tracking_code' }
         )
-        .select('id,tracking_code');
+        .select('id,tracking_code,carrier');
 
       if (shipmentError) throw shipmentError;
       const shipmentIdByOrder = new Map<string, string>();
@@ -359,6 +372,7 @@ export default function AdminRoutesPage() {
                 zone_hint: row.zone_hint,
                 city: row.city,
                 postal_code: row.postal_code,
+                carrier: row.carrier || inferCarrierFromTracking(row.order_id),
                 notes: row.notes,
               },
             };
@@ -504,7 +518,7 @@ export default function AdminRoutesPage() {
               <div key={`${row.order_id || 'sin-id'}-${index}`} className="rounded border border-slate-200 p-2 text-sm">
                 <p>
                   <strong>{row.order_id || 'Sin order_id'}</strong> · {row.customer_name || 'Sin cliente'} ·{' '}
-                  {row.phone || 'Sin teléfono'}
+                  {row.phone || 'Sin teléfono'} · {row.carrier || inferCarrierFromTracking(row.order_id)}
                 </p>
                 <p className="text-slate-600">{row.address_line1 || 'Dirección pendiente'}</p>
                 <p className="text-xs text-slate-500">

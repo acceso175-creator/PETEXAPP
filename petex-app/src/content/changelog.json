@@ -3,6 +3,7 @@
     "date": "2026-02-16",
     "title": "Fix del panel de ruteo masivo: importador flexible + schema/RLS normalizado",
     "highlights": [
+      "Se corrigió ruteo masivo agregando carrier por defecto/inferido para shipments.",
       "Se alineó el importador al schema real de shipments (address_line/recipient_*).",
       "Se corrigió accesibilidad del diálogo y se estabilizó carga por CSV (XLSX con fallback).",
       "Se corrigió carga de zonas (evita 400 por keywords) y se habilitó lectura de XLSX (con fallback a CSV).",
