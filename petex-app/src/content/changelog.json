@@ -1,5 +1,17 @@
 [
   {
+    "date": "2026-02-21",
+    "title": "UX mejorada en Ruteo masivo por CSV",
+    "highlights": [
+      "Se agregó un panel persistente de resultados con resumen de rutas creadas, importados e inválidos tras crear rutas y asignar.",
+      "Ahora se muestra la tabla de filas inválidas con fila/motivo y descarga directa de CSV de errores desde el navegador.",
+      "Se incorporó ayuda para corregir filas y consejo específico cuando falta driver por grupo (fila general).",
+      "Si el endpoint responde error, se muestra banner rojo sin perder el último resultado exitoso para mantener contexto operativo.",
+      "Se corrigió favicon para eliminar 404 en consola.",
+      "Se reemplazó favicon.ico por icon.svg nativo para evitar diffs binarios y eliminar 404."
+    ]
+  },
+  {
     "date": "2026-02-20",
     "title": "Ruteo masivo server-side: deliveries + route_stops con delivery_id",
     "highlights": [
