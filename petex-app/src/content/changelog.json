@@ -3,6 +3,7 @@
     "date": "2026-02-20",
     "title": "Ruteo masivo server-side: deliveries + route_stops con delivery_id",
     "highlights": [
+      "Se eliminó dependencia de columnas fantasma en deliveries: el endpoint usa columnas core y mueve campos variables del CSV a meta jsonb.",
       "Se movió la creación masiva a un endpoint backend admin con service role para insertar routes, deliveries y route_stops de forma consistente.",
       "El endpoint valida filas, asigna zona por keywords, agrupa por modo de asignación y crea rutas en chunks de 150 pedidos por ruta.",
       "Cada ruta creada inserta primero deliveries y luego route_stops con delivery_id obligatorio, stop_order, title, address_text, phone y meta.",

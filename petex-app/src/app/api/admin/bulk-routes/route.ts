@@ -12,6 +12,7 @@ type InputRow = {
   carrier?: string;
   notes?: string;
   zone_id?: string | null;
+  raw_row?: Record<string, unknown>;
 };
 
 type RequestBody = {
@@ -131,6 +132,7 @@ export async function POST(request: Request) {
         carrier: normalize(row.carrier),
         notes: normalize(row.notes),
         zone_id: row.zone_id ?? matchedZone?.id ?? null,
+        raw_row: row.raw_row && typeof row.raw_row === 'object' ? row.raw_row : row,
       };
     })
     .filter(Boolean) as Array<{
@@ -144,6 +146,7 @@ export async function POST(request: Request) {
     carrier: string;
     notes: string;
     zone_id: string | null;
+    raw_row: Record<string, unknown>;
   }>;
 
   if (!normalized.length) {
@@ -198,70 +201,87 @@ export async function POST(request: Request) {
 
       const { data: deliveryRows, error: deliveriesError } = await adminClient
         .from('deliveries')
-        .insert(
+        .upsert(
           rowChunk.map((row) => ({
             tracking_code: row.order_id,
-            carrier: row.carrier || inferCarrierFromTracking(row.order_id),
             recipient_name: row.customer_name || null,
-            recipient_phone: row.phone || null,
-            city: row.city || null,
-            neighborhood: row.zone_hint || null,
+            phone: row.phone || null,
             address_text: row.address_line1,
-            postal_code: row.postal_code || null,
             zone_id: row.zone_id,
             status: 'created',
-            notes: row.notes || null,
             meta: {
-              zone_hint: row.zone_hint,
+              carrier: row.carrier || inferCarrierFromTracking(row.order_id),
+              city: row.city,
+              neighborhood: row.zone_hint,
+              postal_code: row.postal_code,
+              notes: row.notes,
+              raw_row: row.raw_row,
               imported_by: 'admin_bulk_routes',
             },
-          }))
+          })),
+          { onConflict: 'tracking_code' }
         )
-        .select('id,tracking_code,recipient_name,recipient_phone,address_text');
+        .select('id,tracking_code,recipient_name,phone,address_text');
 
       if (deliveriesError) {
         return NextResponse.json({ error: deliveriesError.message }, { status: 400 });
       }
 
-      const deliveryByTracking = new Map<string, { id: string; recipient_name: string | null; recipient_phone: string | null; address_text: string | null }>();
+      const deliveryByTracking = new Map<string, { id: string; recipient_name: string | null; phone: string | null; address_text: string | null }>();
       (deliveryRows ?? []).forEach((d) => {
         deliveryByTracking.set(String(d.tracking_code ?? ''), {
           id: String(d.id),
           recipient_name: d.recipient_name ? String(d.recipient_name) : null,
-          recipient_phone: d.recipient_phone ? String(d.recipient_phone) : null,
+          phone: d.phone ? String(d.phone) : null,
           address_text: d.address_text ? String(d.address_text) : null,
         });
       });
 
-      const stopsPayload = rowChunk.map((row, index) => {
+      const validStops: Array<{
+        route_id: string;
+        delivery_id: string;
+        stop_order: number;
+        title: string;
+        address_text: string;
+        phone: string | null;
+        meta: Record<string, unknown>;
+      }> = [];
+
+      rowChunk.forEach((row, index) => {
         const delivery = deliveryByTracking.get(row.order_id);
-        if (!delivery) {
-          throw new Error(`No se pudo mapear delivery para ${row.order_id}`);
+        if (!delivery?.id) {
+          invalidRows.push({
+            row_number: 0,
+            reason: `No se encontró delivery_id para tracking_code ${row.order_id}.`,
+          });
+          return;
         }
 
-        return {
+        validStops.push({
           route_id: routeData.id,
           delivery_id: delivery.id,
           stop_order: index + 1,
           title: delivery.recipient_name || row.order_id || 'Parada',
           address_text: delivery.address_text || row.address_line1,
-          phone: delivery.recipient_phone || row.phone || null,
+          phone: delivery.phone || row.phone || null,
           meta: {
             order_id: row.order_id,
             customer_name: row.customer_name,
             phone: row.phone,
             zone_hint: row.zone_hint,
           },
-        };
+        });
       });
 
-      const { error: stopsError } = await adminClient.from('route_stops').insert(stopsPayload);
-      if (stopsError) {
-        return NextResponse.json({ error: stopsError.message }, { status: 400 });
+      if (validStops.length) {
+        const { error: stopsError } = await adminClient.from('route_stops').insert(validStops);
+        if (stopsError) {
+          return NextResponse.json({ error: stopsError.message }, { status: 400 });
+        }
       }
 
       routesCreated += 1;
-      deliveriesImported += rowChunk.length;
+      deliveriesImported += validStops.length;
     }
 
     groupsSummary.push({
