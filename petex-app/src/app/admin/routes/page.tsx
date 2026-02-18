@@ -11,7 +11,7 @@ import { getSupabaseClient, supabaseConfigError } from '@/lib/supabase/client';
 import { Upload, Route, MapPin, AlertTriangle } from 'lucide-react';
 
 type DriverProfile = { id: string; full_name: string | null; email: string | null };
-type Zone = { id: string; name: string; color: string; keywords: string[] };
+type Zone = { id: string; name: string; color: string };
 type NormalizedRow = {
   order_id: string;
   customer_name: string;
@@ -119,14 +119,14 @@ const parseXlsxIfAvailable = async (file: File): Promise<Record<string, unknown>
       read: (data: ArrayBuffer, opts: { type: 'array' }) => { SheetNames: string[]; Sheets: Record<string, unknown> };
       utils: { sheet_to_json: (sheet: unknown, opts: { defval: string }) => Record<string, unknown>[] };
     };
-    const dynamicImport = (0, eval)('import("xlsx")') as Promise<XlsxModule>;
-    const XLSX = await dynamicImport;
+    const dynamicImport = new Function('m', 'return import(m)') as (m: string) => Promise<XlsxModule>;
+    const XLSX = await dynamicImport('xlsx');
     const buffer = await file.arrayBuffer();
     const workbook = XLSX.read(buffer, { type: 'array' });
     const firstSheet = workbook.SheetNames[0];
-    return XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { defval: '' });
+    return XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { defval: '' }) as Record<string, unknown>[];
   } catch {
-    throw new Error('Este entorno no tiene paquete xlsx disponible. Convierte a CSV para subirlo.');
+    throw new Error('No se pudo leer XLSX en este entorno. Puedes continuar subiendo CSV.');
   }
 };
 
@@ -208,7 +208,7 @@ export default function AdminRoutesPage() {
         const [{ data: profiles, error: profilesError }, { data: zonesData, error: zonesError }] =
           await Promise.all([
             supabase.from('profiles').select('id,full_name,email').eq('role', 'driver').order('full_name'),
-            supabase.from('zones').select('id,name,color,keywords').order('name'),
+            supabase.from('zones').select('id,name,color').order('name'),
           ]);
 
         if (profilesError) throw profilesError;
@@ -224,7 +224,6 @@ export default function AdminRoutesPage() {
           id: String(z.id),
           name: String(z.name ?? 'Zona'),
           color: z.color ? String(z.color) : '#6B7280',
-          keywords: Array.isArray(z.keywords) ? z.keywords.map((k) => String(k).toLowerCase()) : [],
         }));
 
         setDrivers(nextDrivers);
@@ -276,9 +275,10 @@ export default function AdminRoutesPage() {
     const next = rows.map((row) => {
       if (!row.is_valid) return row;
       const search = [row.address_line1, row.city, row.postal_code, row.zone_hint].join(' ').toLowerCase();
-      const byKeyword = zones.find((zone) => zone.keywords.some((keyword) => search.includes(keyword)));
-      const byHint = zones.find((zone) => row.zone_hint && zone.name.toLowerCase().includes(row.zone_hint.toLowerCase()));
-      const winner = byKeyword ?? byHint;
+      const winner = zones.find((zone) => {
+        const zoneName = zone.name.toLowerCase();
+        return search.includes(zoneName) || (row.zone_hint && zoneName.includes(row.zone_hint.toLowerCase()));
+      });
       return {
         ...row,
         zone_id: winner?.id ?? null,
@@ -286,7 +286,7 @@ export default function AdminRoutesPage() {
       };
     });
     setRows(next);
-    toast.success('Zonas asignadas (keywords / pista de zona / CP).');
+    toast.success('Zonas asignadas por nombre/pista de zona.');
   };
 
   const createRoutes = async () => {
