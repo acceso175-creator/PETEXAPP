@@ -36,7 +36,7 @@ type NormalizedRow = {
   zone_reason: string;
 };
 
-type CreatedRouteResult = { group: string; driver: string; deliveries: number; routes: number };
+type CreatedRouteResult = { group: string; driver: string; shipments: number; routes: number };
 
 const CHUNK_SIZE = 150;
 
@@ -306,8 +306,8 @@ export default function AdminRoutesPage() {
       setIsSaving(true);
       const supabase = getSupabaseClient();
 
-      const { data: upserted, error: deliveryError } = await supabase
-        .from('deliveries')
+      const { data: upserted, error: shipmentError } = await supabase
+        .from('shipments')
         .upsert(
           validRows.map((row) => ({
             tracking_code: row.order_id,
@@ -323,9 +323,9 @@ export default function AdminRoutesPage() {
           })),
           { onConflict: 'tracking_code' }
         )
-        .select('id,tracking_code,carrier,recipient_name,recipient_phone,address_line,postal_code,status,notes');
+        .select('id,tracking_code,recipient_phone,address_line');
 
-      if (deliveryError) throw deliveryError;
+      if (shipmentError) throw shipmentError;
       const deliveryIdByOrder = new Map<string, string>();
       (upserted ?? []).forEach((item) => {
         if (item.tracking_code) deliveryIdByOrder.set(String(item.tracking_code), String(item.id));
@@ -354,13 +354,13 @@ export default function AdminRoutesPage() {
 
           const stopsPayload = slice.map((row, index) => {
             const deliveryId = deliveryIdByOrder.get(row.order_id);
-            if (!deliveryId) throw new Error(`No se encontró delivery para order_id ${row.order_id}`);
+            if (!deliveryId) throw new Error(`No se encontró shipment para order_id ${row.order_id}`);
             const title = row.customer_name || row.address_line1 || 'Parada';
             return {
               route_id: routeData.id,
               delivery_id: deliveryId,
               stop_order: index + 1,
-              title: title || row.order_id,
+              title: row.customer_name || row.order_id || 'Parada',
               address: row.address_line1,
               phone: row.phone || null,
             };
@@ -376,7 +376,7 @@ export default function AdminRoutesPage() {
               ? 'Driver único'
               : (zoneMap.get(groupKey)?.name ?? (groupRows[0]?.zone_hint || 'Sin zona')),
           driver: drivers.find((driver) => driver.id === driverId)?.full_name ?? driverId,
-          deliveries: groupRows.length,
+          shipments: groupRows.length,
           routes: chunks.length,
         });
       }
@@ -395,7 +395,7 @@ export default function AdminRoutesPage() {
   return (
     <div className="space-y-4 p-4 sm:p-6">
       <Card className="p-4">
-        <h1 className="text-xl font-semibold text-slate-900">Ruteo masivo por CSV (deliveries)</h1>
+        <h1 className="text-xl font-semibold text-slate-900">Ruteo masivo por CSV</h1>
         <p className="text-sm text-slate-500">Carga CSV y crea rutas chunked de máximo 150 pedidos.</p>
         <div className="mt-4">
           <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
@@ -529,7 +529,7 @@ export default function AdminRoutesPage() {
           <h3 className="text-sm font-semibold">Resultado</h3>
           {result.map((item, index) => (
             <p key={`${item.group}-${index}`} className="text-sm text-slate-700">
-              Grupo {item.group} · Driver {item.driver} · {item.deliveries} pedidos · {item.routes} rutas
+              Grupo {item.group} · Driver {item.driver} · {item.shipments} pedidos · {item.routes} rutas
             </p>
           ))}
         </Card>
