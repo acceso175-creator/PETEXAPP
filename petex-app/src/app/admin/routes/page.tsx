@@ -7,6 +7,13 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { LoadingScreen } from '@/components/ui/loading-spinner';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { getSupabaseClient, supabaseConfigError } from '@/lib/supabase/client';
 import { Upload, Route, MapPin, AlertTriangle } from 'lucide-react';
 
@@ -113,23 +120,6 @@ const parseCsv = async (file: File): Promise<Record<string, unknown>[]> => {
   });
 };
 
-const parseXlsxIfAvailable = async (file: File): Promise<Record<string, unknown>[]> => {
-  try {
-    type XlsxModule = {
-      read: (data: ArrayBuffer, opts: { type: 'array' }) => { SheetNames: string[]; Sheets: Record<string, unknown> };
-      utils: { sheet_to_json: (sheet: unknown, opts: { defval: string }) => Record<string, unknown>[] };
-    };
-    const dynamicImport = new Function('m', 'return import(m)') as (m: string) => Promise<XlsxModule>;
-    const XLSX = await dynamicImport('xlsx');
-    const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: 'array' });
-    const firstSheet = workbook.SheetNames[0];
-    return XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { defval: '' }) as Record<string, unknown>[];
-  } catch {
-    throw new Error('No se pudo leer XLSX en este entorno. Puedes continuar subiendo CSV.');
-  }
-};
-
 const getValueByAliases = (row: Record<string, unknown>, aliases: string[]) => {
   const normalizedEntries = Object.entries(row).map(([k, v]) => [normalizeHeader(k), v] as const);
   for (const alias of aliases) {
@@ -190,6 +180,7 @@ export default function AdminRoutesPage() {
   const [useSingleDriver, setUseSingleDriver] = useState(true);
   const [driverByGroup, setDriverByGroup] = useState<Record<string, string>>({});
   const [result, setResult] = useState<CreatedRouteResult[]>([]);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
 
   const validRows = useMemo(() => rows.filter((row) => row.is_valid), [rows]);
   const invalidRows = useMemo(() => rows.filter((row) => !row.is_valid), [rows]);
@@ -259,12 +250,12 @@ export default function AdminRoutesPage() {
       let rawRows: Record<string, unknown>[] = [];
       const lower = file.name.toLowerCase();
       if (lower.endsWith('.csv')) rawRows = await parseCsv(file);
-      else if (lower.endsWith('.xlsx')) rawRows = await parseXlsxIfAvailable(file);
-      else throw new Error('Formato no soportado. Usa .csv o .xlsx');
+      else throw new Error('Formato no soportado. Usa únicamente .csv');
 
       const normalized = normalizeRows(rawRows);
       setRows(normalized);
       setResult([]);
+      setIsImportDialogOpen(false);
       toast.success(`Archivo cargado: ${normalized.filter((r) => r.is_valid).length} pedidos válidos.`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo leer el archivo');
@@ -400,19 +391,34 @@ export default function AdminRoutesPage() {
   return (
     <div className="space-y-4 p-4 sm:p-6">
       <Card className="p-4">
-        <h1 className="text-xl font-semibold text-slate-900">Ruteo masivo por archivo</h1>
-        <p className="text-sm text-slate-500">Carga CSV/XLSX y crea rutas chunked de máximo 150 pedidos.</p>
-        <div className="mt-4 space-y-2">
-          <Label htmlFor="file">Archivo</Label>
-          <Input
-            id="file"
-            type="file"
-            accept=".csv,.xlsx"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) handleFile(file);
-            }}
-          />
+        <h1 className="text-xl font-semibold text-slate-900">Ruteo masivo por CSV</h1>
+        <p className="text-sm text-slate-500">Carga CSV y crea rutas chunked de máximo 150 pedidos.</p>
+        <div className="mt-4">
+          <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Upload className="mr-2 h-4 w-4" /> Cargar CSV
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogTitle className="sr-only">Importar pedidos por CSV</DialogTitle>
+              <DialogDescription className="sr-only">
+                Selecciona un archivo CSV para importar pedidos y generar rutas masivas.
+              </DialogDescription>
+              <div className="space-y-2">
+                <Label htmlFor="file">Archivo CSV</Label>
+                <Input
+                  id="file"
+                  type="file"
+                  accept=".csv"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) handleFile(file);
+                  }}
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </Card>
 
