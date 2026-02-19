@@ -296,7 +296,7 @@ export default function DriverRouteDetailPage() {
       } else {
         const { error: routeInProgressError } = await supabase
           .from('routes')
-          .update({ status: 'in_progress' })
+          .update({ status: 'active' })
           .eq('id', routeId)
           .eq('driver_profile_id', user.id);
 
@@ -304,7 +304,7 @@ export default function DriverRouteDetailPage() {
           throw new Error(`Se completó la parada, pero falló estado de ruta ${formatSupabaseError(routeInProgressError as QueryError)}`);
         }
 
-        setRoute((prev) => (prev ? { ...prev, status: 'in_progress' } : prev));
+        setRoute((prev) => (prev ? { ...prev, status: 'active' } : prev));
       }
 
       toast.success('Parada completada');

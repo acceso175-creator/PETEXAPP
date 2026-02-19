@@ -1,5 +1,14 @@
 [
   {
+    "date": "2026-03-01",
+    "title": "Fix Mi Ruta con RPC activa + notas rápidas en Supabase",
+    "highlights": [
+      "Se creó/actualizó la RPC get_driver_current_route para devolver la ruta activa del driver autenticado y evitar el error PGRST202.",
+      "Se creó public.task_messages con RLS por usuario (select/insert/delete propios) para eliminar 404 en notas rápidas y operar contra tabla real.",
+      "Al completar una parada la ruta solo pasa a completed cuando todas las paradas están completas; si no, se mantiene active para que no desaparezca de Mi Ruta."
+    ]
+  },
+  {
     "date": "2026-02-28",
     "title": "Ruta actual por estado activo + estabilidad post-medianoche",
     "highlights": [
