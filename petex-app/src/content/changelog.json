@@ -1,5 +1,14 @@
 [
   {
+    "date": "2026-02-26",
+    "title": "Route Detail estable con completed_at + notas rápidas sin 404",
+    "highlights": [
+      "Fix: route stops ahora usan completed_at como estado fuente (sin pedir route_stops.status en queries).",
+      "Fix: completar parada actualiza completed_at (y completed si existe) para reflejar Completada en UI.",
+      "Chore/Fix: notas rápidas deja de spamear 404 de task_messages; si la tabla no existe cae a mock/local sin ruido recurrente en red/consola."
+    ]
+  },
+  {
     "date": "2026-02-25",
     "title": "Fix completar parada + RLS ownership para detalle de ruta",
     "highlights": [

@@ -2,6 +2,13 @@ import { getSupabaseClient } from '@/lib/supabase/client';
 import { mockTaskMessages } from '@/lib/mock-data';
 import type { TaskMessage } from '@/types';
 
+type QueryLikeError = {
+  code?: string;
+  message?: string;
+};
+
+let taskMessagesTableAvailable = true;
+
 const mapMessage = (row: Record<string, unknown>): TaskMessage => ({
   id: String(row.id ?? ''),
   fromUserId: String(row.from_user_id ?? row.fromUserId ?? ''),
@@ -14,12 +21,22 @@ const mapMessage = (row: Record<string, unknown>): TaskMessage => ({
   readAt: (row.read_at as string | undefined) ?? (row.readAt as string | undefined),
 });
 
-const fallbackMessages = () => {
-  console.warn('[tasks.service] fallback explícito a mockTaskMessages.');
-  return [...mockTaskMessages];
+const fallbackMessages = () => [...mockTaskMessages];
+
+const isMissingTaskMessagesTable = (error: unknown): boolean => {
+  const e = error as QueryLikeError;
+  if (e?.code === 'PGRST205' || e?.code === '42P01') return true;
+  const message = String(e?.message ?? '').toLowerCase();
+  return message.includes('task_messages') && (message.includes('could not find the table') || message.includes('does not exist'));
 };
 
 export async function getMessages(userId: string): Promise<TaskMessage[]> {
+  if (!taskMessagesTableAvailable) {
+    return fallbackMessages()
+      .filter((message) => message.toUserId === userId || message.fromUserId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
   try {
     const supabase = getSupabaseClient();
     const { data, error } = await supabase
@@ -29,7 +46,11 @@ export async function getMessages(userId: string): Promise<TaskMessage[]> {
       .order('created_at', { ascending: false });
     if (error) throw error;
     return (data ?? []).map((row) => mapMessage(row as Record<string, unknown>));
-  } catch {
+  } catch (error) {
+    if (isMissingTaskMessagesTable(error)) {
+      taskMessagesTableAvailable = false;
+    }
+
     return fallbackMessages()
       .filter((message) => message.toUserId === userId || message.fromUserId === userId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -58,6 +79,10 @@ export async function createMessage(data: {
   text: string;
   priority?: 'low' | 'normal' | 'high';
 }): Promise<TaskMessage> {
+  if (!taskMessagesTableAvailable) {
+    throw new Error('Mensajería rápida no disponible en este entorno.');
+  }
+
   const supabase = getSupabaseClient();
   const payload = {
     from_user_id: data.fromUserId,
@@ -69,11 +94,21 @@ export async function createMessage(data: {
   };
 
   const { data: inserted, error } = await supabase.from('task_messages').insert(payload).select('*').single();
-  if (error) throw new Error(`No se pudo crear el mensaje: ${error.message}`);
+  if (error) {
+    if (isMissingTaskMessagesTable(error)) {
+      taskMessagesTableAvailable = false;
+      throw new Error('Mensajería rápida no disponible en este entorno.');
+    }
+    throw new Error(`No se pudo crear el mensaje: ${error.message}`);
+  }
   return mapMessage(inserted as Record<string, unknown>);
 }
 
 export async function markAsRead(messageId: string): Promise<TaskMessage | null> {
+  if (!taskMessagesTableAvailable) {
+    return null;
+  }
+
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('task_messages')
@@ -82,7 +117,14 @@ export async function markAsRead(messageId: string): Promise<TaskMessage | null>
     .select('*')
     .maybeSingle();
 
-  if (error) throw new Error(`No se pudo marcar como leído: ${error.message}`);
+  if (error) {
+    if (isMissingTaskMessagesTable(error)) {
+      taskMessagesTableAvailable = false;
+      return null;
+    }
+    throw new Error(`No se pudo marcar como leído: ${error.message}`);
+  }
+
   return data ? mapMessage(data as Record<string, unknown>) : null;
 }
 

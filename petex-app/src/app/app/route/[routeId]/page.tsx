@@ -17,8 +17,6 @@ import { LoadingScreen } from '@/components/ui/loading-spinner';
 import { getSupabaseClient, supabaseConfigError } from '@/lib/supabase/client';
 import { useAuth } from '@/state';
 
-type StopStatus = 'pending' | 'in_progress' | 'completed' | 'delivered' | 'failed' | 'cancelled';
-
 type StopDetail = {
   id: string;
   route_id: string;
@@ -28,7 +26,6 @@ type StopDetail = {
   recipient_name: string | null;
   address_text: string | null;
   phone: string | null;
-  status: StopStatus;
   delivery_id: string | null;
   tracking_code: string | null;
   completed_at: string | null;
@@ -72,24 +69,8 @@ const asBoolean = (value: unknown): boolean => {
   return false;
 };
 
-const isStopCompleted = (stop: Pick<StopDetail, 'completed_at' | 'completed' | 'status'>): boolean =>
-  Boolean(stop.completed_at) || stop.completed || stop.status === 'completed' || stop.status === 'delivered';
-
-const deriveStopStatus = (value: unknown, completedAt: string | null, completed: boolean): StopStatus => {
-  if (completedAt || completed) return 'completed';
-  const statusText = String(value ?? '').trim().toLowerCase();
-  if (
-    statusText === 'pending' ||
-    statusText === 'in_progress' ||
-    statusText === 'completed' ||
-    statusText === 'delivered' ||
-    statusText === 'failed' ||
-    statusText === 'cancelled'
-  ) {
-    return statusText;
-  }
-  return 'pending';
-};
+const isStopCompleted = (stop: Pick<StopDetail, 'completed_at' | 'completed'>): boolean =>
+  Boolean(stop.completed_at) || stop.completed;
 
 function formatSupabaseError(error: QueryError, fallbackStatus = 400): string {
   const code = error.code ?? 'unknown';
@@ -173,7 +154,7 @@ export default function DriverRouteDetailPage() {
 
     const { data: stopsRows, error: stopsError } = await supabase
       .from('route_stops')
-      .select('id,route_id,position,stop_order,title,recipient_name,address_text,phone,status,delivery_id,tracking_code,meta,completed_at,completed')
+      .select('id,route_id,position,stop_order,title,recipient_name,address_text,phone,delivery_id,tracking_code,meta,completed_at,completed')
       .eq('route_id', routeId)
       .order('position', { ascending: true })
       .order('stop_order', { ascending: true });
@@ -203,7 +184,6 @@ export default function DriverRouteDetailPage() {
         recipient_name: asText(record.recipient_name) ?? asText(meta.customer_name) ?? asText(meta.recipient_name),
         address_text: asText(record.address_text),
         phone: asText(record.phone),
-        status: deriveStopStatus(record.status, completedAt, completed),
         delivery_id: asText(record.delivery_id),
         tracking_code: asText(record.tracking_code) ?? asText(meta.order_id),
         completed_at: completedAt,
@@ -278,7 +258,7 @@ export default function DriverRouteDetailPage() {
     const previousStops = stops;
     const optimisticStops = stops.map((stop) =>
       stop.id === stopId
-        ? { ...stop, status: 'completed' as StopStatus, completed_at: nowIso, completed: true }
+        ? { ...stop, completed_at: nowIso, completed: true }
         : stop
     );
     setStops(optimisticStops);
@@ -302,7 +282,7 @@ export default function DriverRouteDetailPage() {
 
       const { error: stopUpdateError } = await supabase
         .from('route_stops')
-        .update({ status: 'completed', completed_at: nowIso, completed: true })
+        .update({ completed_at: nowIso, completed: true })
         .eq('id', stopId);
 
       if (stopUpdateError) {
