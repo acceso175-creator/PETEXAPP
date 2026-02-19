@@ -10,11 +10,8 @@ import { getSupabaseClient, supabaseConfigError } from '@/lib/supabase/client';
 import { useAuth } from '@/state';
 import { Route as RouteIcon, MapPin, ChevronRight } from 'lucide-react';
 
-const ROUTE_STATUS = ['assigned', 'in_progress', 'completed', 'cancelled'] as const;
+const ROUTE_STATUS = ['assigned', 'active', 'in_progress', 'completed', 'cancelled'] as const;
 type RouteStatus = typeof ROUTE_STATUS[number];
-
-const STOP_STATUS = ['pending', 'in_progress', 'delivered', 'failed', 'cancelled'] as const;
-type StopStatus = typeof STOP_STATUS[number];
 
 type DriverRoute = {
   id: string;
@@ -22,30 +19,26 @@ type DriverRoute = {
   status: RouteStatus;
 };
 
+
+type CurrentRouteRow = {
+  id: string;
+  route_date: string;
+  status: string;
+};
+
 type DriverStop = {
   id: string;
   stop_order: number;
   title: string | null;
   customer_name: string | null;
-  address: string | null;
-  status: StopStatus;
+  address_text: string | null;
+  completed_at: string | null;
 };
 
 function parseRouteStatus(v: unknown): RouteStatus {
   const s = String(v ?? '').trim().toLowerCase();
   return (ROUTE_STATUS as readonly string[]).includes(s) ? (s as RouteStatus) : 'assigned';
 }
-
-function parseStopStatus(v: unknown): StopStatus {
-  const s = String(v ?? '').trim().toLowerCase();
-  return (STOP_STATUS as readonly string[]).includes(s) ? (s as StopStatus) : 'pending';
-}
-
-const todayLocalIso = () => {
-  const now = new Date();
-  const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-  return localDate.toISOString().slice(0, 10);
-};
 
 export default function DriverHomePage() {
   const { user } = useAuth();
@@ -55,7 +48,7 @@ export default function DriverHomePage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadTodayRoute = async () => {
+    const loadCurrentRoute = async () => {
       if (!user) return;
       setIsLoading(true);
       setError(null);
@@ -68,42 +61,34 @@ export default function DriverHomePage() {
 
       try {
         const supabase = getSupabaseClient();
-        const today = todayLocalIso();
 
         const { data: routeData, error: routeError } = await supabase
-          .from('routes')
-          .select('id,route_date,status')
-          .eq('driver_profile_id', user.id)
-          .eq('route_date', today)
-          .order('created_at', { ascending: false })
-          .limit(1)
+          .rpc('get_driver_current_route')
           .maybeSingle();
 
-        if (routeError) {
-          throw routeError;
-        }
+        if (routeError) throw routeError;
 
-        if (!routeData) {
+        const currentRoute = routeData as CurrentRouteRow | null;
+
+        if (!currentRoute) {
           setRoute(null);
           setStops([]);
           return;
         }
 
         setRoute({
-          id: String(routeData.id),
-          route_date: String(routeData.route_date),
-          status: parseRouteStatus(routeData.status),
+          id: String(currentRoute.id),
+          route_date: String(currentRoute.route_date),
+          status: parseRouteStatus(currentRoute.status),
         });
 
         const { data: stopsData, error: stopsError } = await supabase
           .from('route_stops')
-          .select('id,stop_order,title,address,address_text,meta')
-          .eq('route_id', routeData.id)
+          .select('id,stop_order,title,address_text,meta,completed_at')
+          .eq('route_id', currentRoute.id)
           .order('stop_order', { ascending: true });
 
-        if (stopsError) {
-          throw stopsError;
-        }
+        if (stopsError) throw stopsError;
 
         setStops(
           (stopsData ?? []).map((stop) => ({
@@ -114,35 +99,34 @@ export default function DriverHomePage() {
               stop.meta && typeof stop.meta === 'object' && 'customer_name' in stop.meta && stop.meta.customer_name
                 ? String(stop.meta.customer_name)
                 : null,
-            address:
-              stop.address ? String(stop.address) : stop.address_text ? String(stop.address_text) : null,
-            status: 'pending',
+            address_text: stop.address_text ? String(stop.address_text) : null,
+            completed_at: stop.completed_at ? String(stop.completed_at) : null,
           }))
         );
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar tu ruta de hoy');
+        setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar tu ruta actual');
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadTodayRoute();
+    loadCurrentRoute();
   }, [user]);
 
   const completedStops = useMemo(
-    () => stops.filter((stop) => stop.status === 'delivered').length,
+    () => stops.filter((stop) => Boolean(stop.completed_at)).length,
     [stops]
   );
 
   if (isLoading) {
-    return <LoadingScreen message="Cargando tu ruta de hoy..." />;
+    return <LoadingScreen message="Cargando tu ruta actual..." />;
   }
 
   return (
     <div className="p-4 sm:p-6">
       <div className="mb-4">
-        <h1 className="text-xl font-bold text-slate-900">Mi ruta de hoy</h1>
-        <p className="text-sm text-slate-500">Vista rápida de tus paradas asignadas.</p>
+        <h1 className="text-xl font-bold text-slate-900">Mi ruta</h1>
+        <p className="text-sm text-slate-500">Vista rápida de tus paradas activas.</p>
       </div>
 
       {error ? (
@@ -156,7 +140,7 @@ export default function DriverHomePage() {
           </div>
           <h2 className="text-lg font-semibold text-slate-900">Aún no tienes ruta asignada</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Cuando logística te asigne una ruta para hoy, aparecerá aquí automáticamente.
+            Cuando logística te asigne una ruta activa, aparecerá aquí automáticamente.
           </p>
         </Card>
       ) : (
@@ -183,18 +167,22 @@ export default function DriverHomePage() {
           <Card className="p-4">
             <h3 className="mb-3 text-sm font-semibold text-slate-800">Paradas</h3>
             <div className="space-y-2">
-              {stops.map((stop) => (
-                <div key={stop.id} className="flex items-start justify-between rounded-lg border border-slate-200 p-3">
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">#{stop.stop_order} · {stop.title || stop.customer_name || stop.address || 'Parada'}</p>
-                    <p className="text-xs text-slate-500">{stop.address || 'Dirección pendiente'}</p>
+              {stops.map((stop) => {
+                const address = stop.address_text ?? '';
+                const stopState = stop.completed_at ? 'Completada' : 'Pendiente';
+                return (
+                  <div key={stop.id} className="flex items-start justify-between rounded-lg border border-slate-200 p-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">#{stop.stop_order} · {stop.title || stop.customer_name || address || 'Parada'}</p>
+                      <p className="text-xs text-slate-500">{address || 'Dirección pendiente'}</p>
+                    </div>
+                    <div className="ml-2 flex items-center gap-1 text-xs text-slate-500">
+                      <MapPin className="h-3.5 w-3.5" />
+                      {stopState}
+                    </div>
                   </div>
-                  <div className="ml-2 flex items-center gap-1 text-xs capitalize text-slate-500">
-                    <MapPin className="h-3.5 w-3.5" />
-                    {stop.status}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               {!stops.length ? (
                 <p className="text-sm text-slate-500">Esta ruta aún no tiene paradas cargadas.</p>
               ) : null}
