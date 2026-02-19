@@ -21,6 +21,8 @@ export interface RouteStop {
   deliveryId: string;
   order: number;
   status: DeliveryStatus;
+  completed_at?: string | null;
+  completed_by?: string | null;
   deliveredAt?: string | null;
   failureReason?: string | null;
   notes?: string | null;

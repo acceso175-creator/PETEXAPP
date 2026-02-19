@@ -29,7 +29,7 @@ type StopDetail = {
   delivery_id: string | null;
   tracking_code: string | null;
   completed_at: string | null;
-  completed: boolean;
+  completed_by: string | null;
 };
 
 type DriverRoute = {
@@ -62,15 +62,7 @@ const asText = (value: unknown): string | null => {
   return null;
 };
 
-const asBoolean = (value: unknown): boolean => {
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'string') return value.toLowerCase() === 'true';
-  if (typeof value === 'number') return value === 1;
-  return false;
-};
-
-const isStopCompleted = (stop: Pick<StopDetail, 'completed_at' | 'completed'>): boolean =>
-  Boolean(stop.completed_at) || stop.completed;
+const isStopCompleted = (stop: Pick<StopDetail, 'completed_at'>): boolean => Boolean(stop.completed_at);
 
 function formatSupabaseError(error: QueryError, fallbackStatus = 400): string {
   const code = error.code ?? 'unknown';
@@ -83,10 +75,10 @@ function formatSupabaseError(error: QueryError, fallbackStatus = 400): string {
 function mapCompleteStopError(error: unknown): string {
   const qErr = error as QueryError;
   if (qErr?.code === 'PGRST204') {
-    return 'No se encontró la columna completed_at/completed en route_stops (schema cache). Ejecuta migración y recarga PostgREST.';
+    return 'No se encontró la columna completed_at/completed_by en route_stops (schema cache). Ejecuta migración y recarga PostgREST.';
   }
   if (qErr?.code === '42703') {
-    return 'Faltan columnas de completado en route_stops. Aplica la migración de completed_at/completed.';
+    return 'Faltan columnas de completado en route_stops. Aplica la migración de completed_at/completed_by.';
   }
   return error instanceof Error ? error.message : 'No se pudo completar la parada.';
 }
@@ -154,7 +146,7 @@ export default function DriverRouteDetailPage() {
 
     const { data: stopsRows, error: stopsError } = await supabase
       .from('route_stops')
-      .select('id,route_id,position,stop_order,title,recipient_name,address_text,phone,delivery_id,tracking_code,meta,completed_at,completed')
+      .select('id,route_id,position,stop_order,title,recipient_name,address_text,phone,delivery_id,tracking_code,meta,completed_at,completed_by')
       .eq('route_id', routeId)
       .order('position', { ascending: true })
       .order('stop_order', { ascending: true });
@@ -171,7 +163,6 @@ export default function DriverRouteDetailPage() {
       const record: Record<string, unknown> = isRecord(row) ? row : {};
       const meta = isRecord(record.meta) ? record.meta : {};
       const completedAt = asText(record.completed_at);
-      const completed = asBoolean(record.completed);
       const rawPosition = Number(record.position ?? record.stop_order ?? 0);
       const rawOrder = Number(record.stop_order ?? record.position ?? 0);
 
@@ -187,7 +178,7 @@ export default function DriverRouteDetailPage() {
         delivery_id: asText(record.delivery_id),
         tracking_code: asText(record.tracking_code) ?? asText(meta.order_id),
         completed_at: completedAt,
-        completed,
+        completed_by: asText(record.completed_by),
       };
     });
 
@@ -258,7 +249,7 @@ export default function DriverRouteDetailPage() {
     const previousStops = stops;
     const optimisticStops = stops.map((stop) =>
       stop.id === stopId
-        ? { ...stop, completed_at: nowIso, completed: true }
+        ? { ...stop, completed_at: nowIso, completed_by: user.id }
         : stop
     );
     setStops(optimisticStops);
@@ -268,7 +259,7 @@ export default function DriverRouteDetailPage() {
 
       const { data: ownershipStop, error: ownershipError } = await supabase
         .from('route_stops')
-        .select('id,route_id,completed_at,completed')
+        .select('id,route_id,completed_at,completed_by')
         .eq('id', stopId)
         .eq('route_id', routeId)
         .maybeSingle();
@@ -282,7 +273,7 @@ export default function DriverRouteDetailPage() {
 
       const { error: stopUpdateError } = await supabase
         .from('route_stops')
-        .update({ completed_at: nowIso, completed: true })
+        .update({ completed_at: nowIso, completed_by: user.id })
         .eq('id', stopId);
 
       if (stopUpdateError) {

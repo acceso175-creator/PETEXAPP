@@ -1,5 +1,14 @@
 [
   {
+    "date": "2026-02-27",
+    "title": "Driver Route Detail: completed_at/completed_by sin columna completed",
+    "highlights": [
+      "Fix query completed->completed_at: detalle de ruta dejó de pedir route_stops.completed y usa completed_at/completed_by.",
+      "Completar parada ahora guarda completed_at y completed_by, sin usar status/completed en route_stops.",
+      "La UI deriva estado Pendiente/Completada y contadores desde completed_at; notas rápidas mantiene fallback silencioso para evitar 404 de task_messages."
+    ]
+  },
+  {
     "date": "2026-02-26",
     "title": "Route Detail estable con completed_at + notas rápidas sin 404",
     "highlights": [
