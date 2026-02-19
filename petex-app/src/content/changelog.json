@@ -1,5 +1,15 @@
 [
   {
+    "date": "2026-02-24",
+    "title": "Fix RLS ownership y ruta detalle para driver",
+    "highlights": [
+      "Fix RLS ownership: ahora las policies validan perfiles con profiles.id = auth.uid() (sin usar profiles.user_id).",
+      "Driver can open route detail: se ajustó el acceso a routes/route_stops/deliveries por ownership de routes.driver_profile_id.",
+      "Policies admin/driver: admin mantiene acceso total y driver solo lectura/actualización de su operación.",
+      "Add stop completion fields + UI hook: route_stops.status/completed_at y routes.completed_at quedan listos para completar parada sin romper el flujo actual."
+    ]
+  },
+  {
     "date": "2026-02-23",
     "title": "Driver Detalle de ruta: fix de carga + completar parada",
     "highlights": [

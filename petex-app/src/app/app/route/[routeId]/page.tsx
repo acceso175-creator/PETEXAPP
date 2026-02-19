@@ -138,7 +138,7 @@ export default function DriverRouteDetailPage() {
           'No tienes permiso para ver esta ruta (403). Verifica policies RLS de routes/route_stops para driver_profile_id.'
         );
       } else {
-        setError('La ruta no existe o ya no está disponible (404).');
+        setError('La ruta no existe o no tienes acceso (404/403). Revisa asignación y policies RLS.');
       }
 
       setIsLoading(false);
