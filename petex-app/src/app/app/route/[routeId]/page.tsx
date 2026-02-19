@@ -293,6 +293,18 @@ export default function DriverRouteDetailPage() {
         }
 
         setRoute((prev) => (prev ? { ...prev, status: 'completed' } : prev));
+      } else {
+        const { error: routeInProgressError } = await supabase
+          .from('routes')
+          .update({ status: 'in_progress' })
+          .eq('id', routeId)
+          .eq('driver_profile_id', user.id);
+
+        if (routeInProgressError) {
+          throw new Error(`Se completó la parada, pero falló estado de ruta ${formatSupabaseError(routeInProgressError as QueryError)}`);
+        }
+
+        setRoute((prev) => (prev ? { ...prev, status: 'in_progress' } : prev));
       }
 
       toast.success('Parada completada');

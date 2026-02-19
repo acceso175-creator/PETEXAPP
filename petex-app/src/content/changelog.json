@@ -1,5 +1,14 @@
 [
   {
+    "date": "2026-02-28",
+    "title": "Ruta actual por estado activo + estabilidad post-medianoche",
+    "highlights": [
+      "Se agregó RPC get_driver_current_route para obtener la ruta activa más reciente por status (assigned/active/in_progress), evitando depender de route_date = hoy del cliente.",
+      "Completar parada mantiene la ruta visible: guarda completed_at/completed_by y solo marca routes.completed cuando todas las paradas están completas; si no, queda in_progress.",
+      "Notas rápidas se movió a almacenamiento local/mock sin consultas a task_messages, eliminando 404/ruido en consola por tabla inexistente."
+    ]
+  },
+  {
     "date": "2026-02-27",
     "title": "Driver Route Detail: completed_at/completed_by sin columna completed",
     "highlights": [

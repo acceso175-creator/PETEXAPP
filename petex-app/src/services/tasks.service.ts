@@ -1,60 +1,44 @@
-import { getSupabaseClient } from '@/lib/supabase/client';
 import { mockTaskMessages } from '@/lib/mock-data';
 import type { TaskMessage } from '@/types';
 
-type QueryLikeError = {
-  code?: string;
-  message?: string;
-};
+const STORAGE_KEY = 'petex_task_messages';
+let memoryMessages: TaskMessage[] = [...mockTaskMessages];
 
-let taskMessagesTableAvailable = true;
+const sortByDateDesc = (messages: TaskMessage[]) =>
+  [...messages].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-const mapMessage = (row: Record<string, unknown>): TaskMessage => ({
-  id: String(row.id ?? ''),
-  fromUserId: String(row.from_user_id ?? row.fromUserId ?? ''),
-  toUserId: String(row.to_user_id ?? row.toUserId ?? ''),
-  subject: (row.subject as string | undefined) ?? undefined,
-  text: String(row.text ?? ''),
-  priority: String(row.priority ?? 'normal') as TaskMessage['priority'],
-  status: String(row.status ?? 'queued') as TaskMessage['status'],
-  createdAt: String(row.created_at ?? row.createdAt ?? new Date().toISOString()),
-  readAt: (row.read_at as string | undefined) ?? (row.readAt as string | undefined),
-});
+const getStoredMessages = (): TaskMessage[] => {
+  if (typeof window === 'undefined') {
+    return memoryMessages;
+  }
 
-const fallbackMessages = () => [...mockTaskMessages];
-
-const isMissingTaskMessagesTable = (error: unknown): boolean => {
-  const e = error as QueryLikeError;
-  if (e?.code === 'PGRST205' || e?.code === '42P01') return true;
-  const message = String(e?.message ?? '').toLowerCase();
-  return message.includes('task_messages') && (message.includes('could not find the table') || message.includes('does not exist'));
-};
-
-export async function getMessages(userId: string): Promise<TaskMessage[]> {
-  if (!taskMessagesTableAvailable) {
-    return fallbackMessages()
-      .filter((message) => message.toUserId === userId || message.fromUserId === userId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const raw = window.localStorage.getItem(STORAGE_KEY);
+  if (!raw) {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryMessages));
+    return memoryMessages;
   }
 
   try {
-    const supabase = getSupabaseClient();
-    const { data, error } = await supabase
-      .from('task_messages')
-      .select('*')
-      .or(`to_user_id.eq.${userId},from_user_id.eq.${userId}`)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    return (data ?? []).map((row) => mapMessage(row as Record<string, unknown>));
-  } catch (error) {
-    if (isMissingTaskMessagesTable(error)) {
-      taskMessagesTableAvailable = false;
-    }
-
-    return fallbackMessages()
-      .filter((message) => message.toUserId === userId || message.fromUserId === userId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const parsed = JSON.parse(raw) as TaskMessage[];
+    if (!Array.isArray(parsed)) return memoryMessages;
+    memoryMessages = parsed;
+    return memoryMessages;
+  } catch {
+    return memoryMessages;
   }
+};
+
+const saveMessages = (messages: TaskMessage[]) => {
+  memoryMessages = messages;
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+  }
+};
+
+export async function getMessages(userId: string): Promise<TaskMessage[]> {
+  return sortByDateDesc(
+    getStoredMessages().filter((message) => message.toUserId === userId || message.fromUserId === userId)
+  );
 }
 
 export async function getInboxMessages(userId: string): Promise<TaskMessage[]> {
@@ -79,53 +63,35 @@ export async function createMessage(data: {
   text: string;
   priority?: 'low' | 'normal' | 'high';
 }): Promise<TaskMessage> {
-  if (!taskMessagesTableAvailable) {
-    throw new Error('Mensajería rápida no disponible en este entorno.');
-  }
-
-  const supabase = getSupabaseClient();
-  const payload = {
-    from_user_id: data.fromUserId,
-    to_user_id: data.toUserId,
-    subject: data.subject ?? null,
+  const message: TaskMessage = {
+    id: `local-${Date.now()}`,
+    fromUserId: data.fromUserId,
+    toUserId: data.toUserId,
+    subject: data.subject,
     text: data.text,
     priority: data.priority ?? 'normal',
     status: 'queued',
+    createdAt: new Date().toISOString(),
   };
 
-  const { data: inserted, error } = await supabase.from('task_messages').insert(payload).select('*').single();
-  if (error) {
-    if (isMissingTaskMessagesTable(error)) {
-      taskMessagesTableAvailable = false;
-      throw new Error('Mensajería rápida no disponible en este entorno.');
-    }
-    throw new Error(`No se pudo crear el mensaje: ${error.message}`);
-  }
-  return mapMessage(inserted as Record<string, unknown>);
+  saveMessages([message, ...getStoredMessages()]);
+  return message;
 }
 
 export async function markAsRead(messageId: string): Promise<TaskMessage | null> {
-  if (!taskMessagesTableAvailable) {
-    return null;
-  }
+  let updated: TaskMessage | null = null;
+  const messages = getStoredMessages().map((message) => {
+    if (message.id !== messageId) return message;
+    updated = {
+      ...message,
+      status: 'read',
+      readAt: new Date().toISOString(),
+    };
+    return updated;
+  });
 
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('task_messages')
-    .update({ status: 'read', read_at: new Date().toISOString() })
-    .eq('id', messageId)
-    .select('*')
-    .maybeSingle();
-
-  if (error) {
-    if (isMissingTaskMessagesTable(error)) {
-      taskMessagesTableAvailable = false;
-      return null;
-    }
-    throw new Error(`No se pudo marcar como leído: ${error.message}`);
-  }
-
-  return data ? mapMessage(data as Record<string, unknown>) : null;
+  saveMessages(messages);
+  return updated;
 }
 
 export async function sendWhatsAppNotification(phone: string, message: string): Promise<boolean> {
