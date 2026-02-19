@@ -27,7 +27,7 @@ type DriverStop = {
   stop_order: number;
   title: string | null;
   customer_name: string | null;
-  address: string | null;
+  address_text: string | null;
   status: StopStatus;
 };
 
@@ -97,7 +97,7 @@ export default function DriverHomePage() {
 
         const { data: stopsData, error: stopsError } = await supabase
           .from('route_stops')
-          .select('id,stop_order,title,address,address_text,meta')
+          .select('id,stop_order,title,address_text,meta')
           .eq('route_id', routeData.id)
           .order('stop_order', { ascending: true });
 
@@ -114,8 +114,7 @@ export default function DriverHomePage() {
               stop.meta && typeof stop.meta === 'object' && 'customer_name' in stop.meta && stop.meta.customer_name
                 ? String(stop.meta.customer_name)
                 : null,
-            address:
-              stop.address ? String(stop.address) : stop.address_text ? String(stop.address_text) : null,
+            address_text: stop.address_text ? String(stop.address_text) : null,
             status: 'pending',
           }))
         );
@@ -183,18 +182,21 @@ export default function DriverHomePage() {
           <Card className="p-4">
             <h3 className="mb-3 text-sm font-semibold text-slate-800">Paradas</h3>
             <div className="space-y-2">
-              {stops.map((stop) => (
-                <div key={stop.id} className="flex items-start justify-between rounded-lg border border-slate-200 p-3">
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">#{stop.stop_order} · {stop.title || stop.customer_name || stop.address || 'Parada'}</p>
-                    <p className="text-xs text-slate-500">{stop.address || 'Dirección pendiente'}</p>
+              {stops.map((stop) => {
+                const address = stop.address_text ?? '';
+                return (
+                  <div key={stop.id} className="flex items-start justify-between rounded-lg border border-slate-200 p-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">#{stop.stop_order} · {stop.title || stop.customer_name || address || 'Parada'}</p>
+                      <p className="text-xs text-slate-500">{address || 'Dirección pendiente'}</p>
+                    </div>
+                    <div className="ml-2 flex items-center gap-1 text-xs capitalize text-slate-500">
+                      <MapPin className="h-3.5 w-3.5" />
+                      {stop.status}
+                    </div>
                   </div>
-                  <div className="ml-2 flex items-center gap-1 text-xs capitalize text-slate-500">
-                    <MapPin className="h-3.5 w-3.5" />
-                    {stop.status}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               {!stops.length ? (
                 <p className="text-sm text-slate-500">Esta ruta aún no tiene paradas cargadas.</p>
               ) : null}

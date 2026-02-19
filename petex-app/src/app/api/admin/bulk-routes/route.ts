@@ -63,6 +63,13 @@ export async function POST(request: Request) {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  const rollbackRoute = async (routeId: string, reason: string) => {
+    const { error } = await adminClient.from('routes').delete().eq('id', routeId);
+    if (error) {
+      console.error('[bulk-routes] No se pudo revertir route', { routeId, reason, error: error.message });
+    }
+  };
+
   const { data: authData, error: authError } = await authClient.auth.getUser(token);
   if (authError || !authData.user) {
     return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
@@ -182,6 +189,7 @@ export async function POST(request: Request) {
     }
 
     const rowChunks = chunk(groupRows, CHUNK_SIZE);
+    let createdRoutesInGroup = 0;
 
     for (const rowChunk of rowChunks) {
       const { data: routeData, error: routeError } = await adminClient
@@ -224,12 +232,18 @@ export async function POST(request: Request) {
         .select('id,tracking_code,recipient_name,phone,address_text');
 
       if (deliveriesError) {
+        await rollbackRoute(routeData.id, 'deliveries_upsert_failed');
         return NextResponse.json({ error: deliveriesError.message }, { status: 400 });
       }
 
-      const deliveryByTracking = new Map<string, { id: string; recipient_name: string | null; phone: string | null; address_text: string | null }>();
+      const deliveryByTracking = new Map<
+        string,
+        { id: string; recipient_name: string | null; phone: string | null; address_text: string | null }
+      >();
       (deliveryRows ?? []).forEach((d) => {
-        deliveryByTracking.set(String(d.tracking_code ?? ''), {
+        const trackingCode = String(d.tracking_code ?? '');
+        if (!trackingCode) return;
+        deliveryByTracking.set(trackingCode, {
           id: String(d.id),
           recipient_name: d.recipient_name ? String(d.recipient_name) : null,
           phone: d.phone ? String(d.phone) : null,
@@ -273,13 +287,19 @@ export async function POST(request: Request) {
         });
       });
 
-      if (validStops.length) {
-        const { error: stopsError } = await adminClient.from('route_stops').insert(validStops);
-        if (stopsError) {
-          return NextResponse.json({ error: stopsError.message }, { status: 400 });
-        }
+      if (!validStops.length) {
+        await rollbackRoute(routeData.id, 'chunk_without_valid_stops');
+        invalidRows.push({ row_number: 0, reason: 'Chunk sin paradas válidas; ruta revertida.' });
+        continue;
       }
 
+      const { error: stopsError } = await adminClient.from('route_stops').insert(validStops);
+      if (stopsError) {
+        await rollbackRoute(routeData.id, 'route_stops_insert_failed');
+        return NextResponse.json({ error: stopsError.message }, { status: 400 });
+      }
+
+      createdRoutesInGroup += 1;
       routesCreated += 1;
       deliveriesImported += validStops.length;
     }
@@ -288,7 +308,7 @@ export async function POST(request: Request) {
       group: groupKey,
       driver: driverId,
       shipments: groupRows.length,
-      routes: rowChunks.length,
+      routes: createdRoutesInGroup,
     });
   }
 

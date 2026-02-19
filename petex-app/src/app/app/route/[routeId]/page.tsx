@@ -14,7 +14,7 @@ type StopDetail = {
   stop_order: number;
   title: string | null;
   recipient_name: string | null;
-  address_line1: string | null;
+  address_text: string | null;
   status: StopStatus;
 };
 
@@ -45,7 +45,7 @@ export default function DriverRouteDetailPage() {
         const supabase = getSupabaseClient();
         const { data, error: stopsError } = await supabase
           .from('route_stops')
-          .select('id,stop_order,title,address,address_text,meta,phone')
+          .select('id,stop_order,title,address_text,meta,phone,status')
           .eq('route_id', routeId)
           .order('stop_order', { ascending: true });
 
@@ -61,8 +61,8 @@ export default function DriverRouteDetailPage() {
                 : stop.phone
                   ? String(stop.phone)
                   : null,
-            address_line1: stop.address ? String(stop.address) : stop.address_text ? String(stop.address_text) : null,
-            status: 'pending',
+            address_text: stop.address_text ? String(stop.address_text) : null,
+            status: parseStopStatus(stop.status),
           }))
         );
       } catch (loadError) {
@@ -83,15 +83,18 @@ export default function DriverRouteDetailPage() {
       {error ? <Card className="p-4 text-sm text-red-600">{error}</Card> : null}
       <Card className="p-4">
         <div className="space-y-2">
-          {stops.map((stop) => (
-            <div key={stop.id} className="rounded-lg border border-slate-200 p-3">
-              <p className="text-sm font-medium text-slate-900">
-                #{stop.stop_order} · {stop.title || stop.recipient_name || stop.address_line1 || 'Parada'}
-              </p>
-              <p className="text-xs text-slate-500">{stop.address_line1 || 'Dirección pendiente'}</p>
-              <p className="mt-1 text-xs capitalize text-slate-600">Estado: {stop.status}</p>
-            </div>
-          ))}
+          {stops.map((stop) => {
+            const address = stop.address_text ?? '';
+            return (
+              <div key={stop.id} className="rounded-lg border border-slate-200 p-3">
+                <p className="text-sm font-medium text-slate-900">
+                  #{stop.stop_order} · {stop.title || stop.recipient_name || address || 'Parada'}
+                </p>
+                <p className="text-xs text-slate-500">{address || 'Dirección pendiente'}</p>
+                <p className="mt-1 text-xs capitalize text-slate-600">Estado: {stop.status}</p>
+              </div>
+            );
+          })}
           {!stops.length ? <p className="text-sm text-slate-500">Sin paradas disponibles.</p> : null}
         </div>
       </Card>

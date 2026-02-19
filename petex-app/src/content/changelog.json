@@ -1,5 +1,14 @@
 [
   {
+    "date": "2026-02-22",
+    "title": "Normalización de direcciones y rollback seguro en bulk routes",
+    "highlights": [
+      "UI ahora usa address_text y dejó de pedir address en queries/renders de rutas y paradas.",
+      "Bulk routes ahora revierte rutas si falla la inserción de deliveries o route_stops; ya no deja rutas huérfanas.",
+      "routes_created ahora solo cuenta rutas con stops insertados y deliveries_imported refleja paradas válidas realmente creadas."
+    ]
+  },
+  {
     "date": "2026-02-21",
     "title": "UX mejorada en Ruteo masivo por CSV",
     "highlights": [
