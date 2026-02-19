@@ -1,5 +1,15 @@
 [
   {
+    "date": "2026-02-25",
+    "title": "Fix completar parada + RLS ownership para detalle de ruta",
+    "highlights": [
+      "Fix RLS ownership: policies y helper usan profiles.id = auth.uid() (sin profiles.user_id).",
+      "Driver can open route detail: route_stops se consulta por route_id con ownership por routes.driver_profile_id.",
+      "Add stop completion fields + schema refresh: se agregan completed_at/completed en route_stops y NOTIFY pgrst para recargar schema cache.",
+      "UI de Driver: completar parada actualiza completed_at/completed, deshabilita el botón cuando ya está completada y muestra mensaje claro si falta columna en cache."
+    ]
+  },
+  {
     "date": "2026-02-24",
     "title": "Fix RLS ownership y ruta detalle para driver",
     "highlights": [

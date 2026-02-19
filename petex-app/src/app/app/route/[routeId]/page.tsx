@@ -17,8 +17,7 @@ import { LoadingScreen } from '@/components/ui/loading-spinner';
 import { getSupabaseClient, supabaseConfigError } from '@/lib/supabase/client';
 import { useAuth } from '@/state';
 
-const STOP_STATUS = ['pending', 'in_progress', 'delivered', 'completed', 'failed', 'cancelled'] as const;
-type StopStatus = typeof STOP_STATUS[number];
+type StopStatus = 'pending' | 'in_progress' | 'completed' | 'delivered' | 'failed' | 'cancelled';
 
 type StopDetail = {
   id: string;
@@ -33,6 +32,7 @@ type StopDetail = {
   delivery_id: string | null;
   tracking_code: string | null;
   completed_at: string | null;
+  completed: boolean;
 };
 
 type DriverRoute = {
@@ -65,10 +65,31 @@ const asText = (value: unknown): string | null => {
   return null;
 };
 
-function parseStopStatus(v: unknown): StopStatus {
-  const s = String(v ?? '').trim().toLowerCase();
-  return (STOP_STATUS as readonly string[]).includes(s) ? (s as StopStatus) : 'pending';
-}
+const asBoolean = (value: unknown): boolean => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') return value.toLowerCase() === 'true';
+  if (typeof value === 'number') return value === 1;
+  return false;
+};
+
+const isStopCompleted = (stop: Pick<StopDetail, 'completed_at' | 'completed' | 'status'>): boolean =>
+  Boolean(stop.completed_at) || stop.completed || stop.status === 'completed' || stop.status === 'delivered';
+
+const deriveStopStatus = (value: unknown, completedAt: string | null, completed: boolean): StopStatus => {
+  if (completedAt || completed) return 'completed';
+  const statusText = String(value ?? '').trim().toLowerCase();
+  if (
+    statusText === 'pending' ||
+    statusText === 'in_progress' ||
+    statusText === 'completed' ||
+    statusText === 'delivered' ||
+    statusText === 'failed' ||
+    statusText === 'cancelled'
+  ) {
+    return statusText;
+  }
+  return 'pending';
+};
 
 function formatSupabaseError(error: QueryError, fallbackStatus = 400): string {
   const code = error.code ?? 'unknown';
@@ -76,6 +97,17 @@ function formatSupabaseError(error: QueryError, fallbackStatus = 400): string {
   const details = error.details ? ` · ${error.details}` : '';
   const hint = error.hint ? ` · hint: ${error.hint}` : '';
   return `(${status}/${code}) ${error.message}${details}${hint}`;
+}
+
+function mapCompleteStopError(error: unknown): string {
+  const qErr = error as QueryError;
+  if (qErr?.code === 'PGRST204') {
+    return 'No se encontró la columna completed_at/completed en route_stops (schema cache). Ejecuta migración y recarga PostgREST.';
+  }
+  if (qErr?.code === '42703') {
+    return 'Faltan columnas de completado en route_stops. Aplica la migración de completed_at/completed.';
+  }
+  return error instanceof Error ? error.message : 'No se pudo completar la parada.';
 }
 
 export default function DriverRouteDetailPage() {
@@ -91,10 +123,7 @@ export default function DriverRouteDetailPage() {
   const [activeStop, setActiveStop] = useState<StopDetail | null>(null);
   const [isCompletingStop, setIsCompletingStop] = useState(false);
 
-  const completedStops = useMemo(
-    () => stops.filter((stop) => stop.status === 'completed' || stop.status === 'delivered').length,
-    [stops]
-  );
+  const completedStops = useMemo(() => stops.filter((stop) => isStopCompleted(stop)).length, [stops]);
 
   const loadRoute = useCallback(async () => {
     if (!routeId || !user) return;
@@ -117,8 +146,7 @@ export default function DriverRouteDetailPage() {
       .maybeSingle();
 
     if (routeError) {
-      const msg = `No se pudo validar la ruta ${formatSupabaseError(routeError as QueryError)}`;
-      setError(msg);
+      setError(`No se pudo validar la ruta ${formatSupabaseError(routeError as QueryError)}`);
       setIsLoading(false);
       return;
     }
@@ -131,105 +159,79 @@ export default function DriverRouteDetailPage() {
         .maybeSingle();
 
       if (routeByIdError) {
-        const msg = `No se pudo consultar la ruta ${formatSupabaseError(routeByIdError as QueryError)}`;
-        setError(msg);
+        setError(`No se pudo consultar la ruta ${formatSupabaseError(routeByIdError as QueryError)}`);
       } else if (routeById?.id) {
-        setError(
-          'No tienes permiso para ver esta ruta (403). Verifica policies RLS de routes/route_stops para driver_profile_id.'
-        );
+        setError('No tienes permiso para ver esta ruta (403). Verifica RLS ownership con routes.driver_profile_id = auth.uid().');
       } else {
         setError('La ruta no existe o no tienes acceso (404/403). Revisa asignación y policies RLS.');
       }
-
       setIsLoading(false);
       return;
     }
 
     setRoute({ id: String(routeData.id), status: String(routeData.status ?? 'active') });
 
-    const stopsQuery = supabase
+    const { data: stopsRows, error: stopsError } = await supabase
       .from('route_stops')
-      .select('*')
+      .select('id,route_id,position,stop_order,title,recipient_name,address_text,phone,status,delivery_id,tracking_code,meta,completed_at,completed')
       .eq('route_id', routeId)
       .order('position', { ascending: true })
       .order('stop_order', { ascending: true });
 
-    const { data: stopsRows, error: stopsError } = await stopsQuery;
-
     if (stopsError) {
-      const msg = `No se pudo cargar paradas ${formatSupabaseError(stopsError as QueryError)}`;
-      setError(msg);
-      console.error('[driver-route-detail] Posible bloqueo RLS en route_stops.', {
-        routeId,
-        userId: user.id,
-        error: stopsError,
-      });
-      // Si este error aparece en producción, revisar policies SELECT para drivers en route_stops/deliveries
-      // permitiendo acceso cuando routes.driver_profile_id = auth.uid().
+      setError(`No se pudo cargar paradas ${formatSupabaseError(stopsError as QueryError)}`);
+      console.error('[driver-route-detail] Posible bloqueo RLS en route_stops.', { routeId, userId: user.id, error: stopsError });
+      // Requiere policies RLS: routes.driver_profile_id = auth.uid() para SELECT/UPDATE de route_stops/deliveries.
       setIsLoading(false);
       return;
     }
 
     const routeStops = (stopsRows ?? []).map((row): StopDetail => {
-      const record = isRecord(row) ? row : {};
+      const record: Record<string, unknown> = isRecord(row) ? row : {};
       const meta = isRecord(record.meta) ? record.meta : {};
+      const completedAt = asText(record.completed_at);
+      const completed = asBoolean(record.completed);
       const rawPosition = Number(record.position ?? record.stop_order ?? 0);
       const rawOrder = Number(record.stop_order ?? record.position ?? 0);
-      const title = asText(record.title);
-      const recipientFromMeta = asText(meta.customer_name) ?? asText(meta.recipient_name);
 
       return {
         id: String(record.id ?? ''),
         route_id: String(record.route_id ?? routeId),
         stop_order: Number.isFinite(rawOrder) ? rawOrder : 0,
         position: Number.isFinite(rawPosition) ? rawPosition : 0,
-        title,
-        recipient_name: asText(record.recipient_name) ?? recipientFromMeta,
+        title: asText(record.title),
+        recipient_name: asText(record.recipient_name) ?? asText(meta.customer_name) ?? asText(meta.recipient_name),
         address_text: asText(record.address_text),
         phone: asText(record.phone),
-        status: parseStopStatus(record.status),
+        status: deriveStopStatus(record.status, completedAt, completed),
         delivery_id: asText(record.delivery_id),
         tracking_code: asText(record.tracking_code) ?? asText(meta.order_id),
-        completed_at: asText(record.completed_at),
+        completed_at: completedAt,
+        completed,
       };
     });
 
-    const deliveryIds = routeStops
-      .map((stop) => stop.delivery_id)
-      .filter((value): value is string => Boolean(value));
-
-    const trackingCodes = routeStops
-      .map((stop) => stop.tracking_code)
-      .filter((value): value is string => Boolean(value));
+    const deliveryIds = routeStops.map((stop) => stop.delivery_id).filter((value): value is string => Boolean(value));
+    const trackingCodes = routeStops.map((stop) => stop.tracking_code).filter((value): value is string => Boolean(value));
 
     const deliveryById = new Map<string, DeliveryLookup>();
     const deliveryByTracking = new Map<string, DeliveryLookup>();
 
     if (deliveryIds.length || trackingCodes.length) {
-      let deliveriesQuery = supabase
-        .from('deliveries')
-        .select('id,tracking_code,recipient_name,phone,address_text');
-
+      let deliveriesQuery = supabase.from('deliveries').select('id,tracking_code,recipient_name,phone,address_text');
       const filters: string[] = [];
-      if (deliveryIds.length) {
-        filters.push(`id.in.(${deliveryIds.join(',')})`);
-      }
+
+      if (deliveryIds.length) filters.push(`id.in.(${deliveryIds.join(',')})`);
       if (trackingCodes.length) {
         const escaped = trackingCodes.map((code) => `"${code.replace(/\"/g, '\\"')}"`);
         filters.push(`tracking_code.in.(${escaped.join(',')})`);
       }
-      if (filters.length) {
-        deliveriesQuery = deliveriesQuery.or(filters.join(','));
-      }
+      if (filters.length) deliveriesQuery = deliveriesQuery.or(filters.join(','));
 
       const { data: deliveriesRows, error: deliveriesError } = await deliveriesQuery;
       if (deliveriesError) {
         setError(`No se pudo cargar datos de entrega ${formatSupabaseError(deliveriesError as QueryError)}`);
-        console.error('[driver-route-detail] Posible bloqueo RLS en deliveries.', {
-          routeId,
-          userId: user.id,
-          error: deliveriesError,
-        });
+        console.error('[driver-route-detail] Posible bloqueo RLS en deliveries.', { routeId, userId: user.id, error: deliveriesError });
         setIsLoading(false);
         return;
       }
@@ -243,28 +245,20 @@ export default function DriverRouteDetailPage() {
           tracking_code: row.tracking_code ? String(row.tracking_code) : null,
         };
         deliveryById.set(delivery.id, delivery);
-        if (delivery.tracking_code) {
-          deliveryByTracking.set(delivery.tracking_code, delivery);
-        }
+        if (delivery.tracking_code) deliveryByTracking.set(delivery.tracking_code, delivery);
       });
     }
 
-    const hydratedStops = routeStops
-      .map((stop) => {
-        const delivery = (stop.delivery_id ? deliveryById.get(stop.delivery_id) : null) ||
-          (stop.tracking_code ? deliveryByTracking.get(stop.tracking_code) : null);
-        return {
-          ...stop,
-          recipient_name: stop.recipient_name ?? delivery?.recipient_name ?? null,
-          phone: stop.phone ?? delivery?.phone ?? null,
-          address_text: stop.address_text ?? delivery?.address_text ?? null,
-          tracking_code: stop.tracking_code ?? delivery?.tracking_code ?? null,
-        };
-      })
-      .sort((a, b) => {
-        if (a.position !== b.position) return a.position - b.position;
-        return a.stop_order - b.stop_order;
-      });
+    const hydratedStops = routeStops.map((stop) => {
+      const delivery = (stop.delivery_id ? deliveryById.get(stop.delivery_id) : null) ||
+        (stop.tracking_code ? deliveryByTracking.get(stop.tracking_code) : null);
+      return {
+        ...stop,
+        recipient_name: stop.recipient_name ?? delivery?.recipient_name ?? null,
+        phone: stop.phone ?? delivery?.phone ?? null,
+        address_text: stop.address_text ?? delivery?.address_text ?? null,
+      };
+    });
 
     setStops(hydratedStops);
     setIsLoading(false);
@@ -276,14 +270,16 @@ export default function DriverRouteDetailPage() {
 
   const handleCompleteStop = async () => {
     if (!activeStop || !user) return;
+
     const stopId = activeStop.id;
     const nowIso = new Date().toISOString();
-
     setIsCompletingStop(true);
 
     const previousStops = stops;
     const optimisticStops = stops.map((stop) =>
-      stop.id === stopId ? { ...stop, status: 'completed' as const, completed_at: nowIso } : stop
+      stop.id === stopId
+        ? { ...stop, status: 'completed' as StopStatus, completed_at: nowIso, completed: true }
+        : stop
     );
     setStops(optimisticStops);
 
@@ -292,7 +288,7 @@ export default function DriverRouteDetailPage() {
 
       const { data: ownershipStop, error: ownershipError } = await supabase
         .from('route_stops')
-        .select('id,route_id')
+        .select('id,route_id,completed_at,completed')
         .eq('id', stopId)
         .eq('route_id', routeId)
         .maybeSingle();
@@ -300,62 +296,32 @@ export default function DriverRouteDetailPage() {
       if (ownershipError) {
         throw new Error(`No se pudo validar ownership ${formatSupabaseError(ownershipError as QueryError)}`);
       }
-
       if (!ownershipStop?.id) {
-        throw new Error('No se pudo validar ownership del stop (403). Revisa policies RLS para drivers.');
+        throw new Error('No se pudo validar ownership del stop (403). Revisa RLS para driver_profile_id.');
       }
 
-      const updatePayload: { status: string; completed_at?: string } = {
-        status: 'completed',
-        completed_at: nowIso,
-      };
-
-      let { error: stopUpdateError } = await supabase.from('route_stops').update(updatePayload).eq('id', stopId);
-
-      if ((stopUpdateError as QueryError | null)?.code === '42703') {
-        const fallback = await supabase.from('route_stops').update({ status: 'completed' }).eq('id', stopId);
-        stopUpdateError = fallback.error;
-      }
+      const { error: stopUpdateError } = await supabase
+        .from('route_stops')
+        .update({ status: 'completed', completed_at: nowIso, completed: true })
+        .eq('id', stopId);
 
       if (stopUpdateError) {
-        throw new Error(`No se pudo completar parada ${formatSupabaseError(stopUpdateError as QueryError)}`);
+        throw stopUpdateError;
       }
 
-      const completedStopsCount = optimisticStops.filter(
-        (stop) => stop.status === 'completed' || stop.status === 'delivered'
-      ).length;
-
-      if (completedStopsCount === optimisticStops.length && optimisticStops.length > 0) {
+      const completedCount = optimisticStops.filter((stop) => isStopCompleted(stop)).length;
+      if (completedCount === optimisticStops.length && optimisticStops.length > 0) {
         const { error: routeUpdateError } = await supabase
           .from('routes')
-          .update({ status: 'completed' })
+          .update({ status: 'completed', completed_at: nowIso })
           .eq('id', routeId)
           .eq('driver_profile_id', user.id);
 
-        if (routeUpdateError) {
-          throw new Error(`Se completó la parada, pero falló actualización de ruta ${formatSupabaseError(routeUpdateError as QueryError)}`);
+        if (routeUpdateError && (routeUpdateError as QueryError).code !== '42703') {
+          throw new Error(`Se completó la parada, pero falló update de ruta ${formatSupabaseError(routeUpdateError as QueryError)}`);
         }
 
         setRoute((prev) => (prev ? { ...prev, status: 'completed' } : prev));
-      }
-
-      const { error: eventError } = await supabase.from('shipment_events').insert({
-        route_stop_id: stopId,
-        delivery_id: activeStop.delivery_id,
-        event: 'completed',
-        created_at: nowIso,
-        payload: {
-          route_id: routeId,
-          tracking_code: activeStop.tracking_code,
-          source: 'driver_route_detail',
-        },
-      });
-
-      if (eventError) {
-        console.error('[driver-route-detail] No se pudo registrar shipment_event completed', {
-          stopId,
-          eventError,
-        });
       }
 
       toast.success('Parada completada');
@@ -364,7 +330,7 @@ export default function DriverRouteDetailPage() {
       await loadRoute();
     } catch (completeError) {
       setStops(previousStops);
-      const message = completeError instanceof Error ? completeError.message : 'No se pudo completar la parada';
+      const message = mapCompleteStopError(completeError);
       setError(message);
       toast.error(message);
     } finally {
@@ -387,7 +353,7 @@ export default function DriverRouteDetailPage() {
         <div className="space-y-3">
           {stops.map((stop) => {
             const address = stop.address_text ?? '';
-            const canComplete = stop.status === 'pending' || stop.status === 'in_progress';
+            const completed = isStopCompleted(stop);
             return (
               <div key={stop.id} className="rounded-lg border border-slate-200 p-3">
                 <div className="flex items-start justify-between gap-3">
@@ -397,22 +363,14 @@ export default function DriverRouteDetailPage() {
                     </p>
                     <p className="text-xs text-slate-500">{address || 'Dirección pendiente'}</p>
                     <p className="mt-1 text-xs text-slate-600">{stop.phone || 'Teléfono pendiente'}</p>
-                    <p className="mt-1 text-xs capitalize text-slate-600">Estado: {stop.status}</p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      Estado: {completed ? 'Completada' : 'Pendiente'}
+                    </p>
                   </div>
 
-                  {canComplete ? (
-                    <Button
-                      size="sm"
-                      onClick={() => setActiveStop(stop)}
-                      disabled={isCompletingStop}
-                    >
-                      Completar
-                    </Button>
-                  ) : (
-                    <span className="rounded-full bg-slate-100 px-2 py-1 text-xs capitalize text-slate-600">
-                      {stop.status}
-                    </span>
-                  )}
+                  <Button size="sm" onClick={() => setActiveStop(stop)} disabled={isCompletingStop || completed}>
+                    {completed ? 'Completada' : 'Completar'}
+                  </Button>
                 </div>
               </div>
             );
@@ -439,7 +397,7 @@ export default function DriverRouteDetailPage() {
             <Button variant="outline" onClick={() => setActiveStop(null)} disabled={isCompletingStop}>
               Cancelar
             </Button>
-            <Button onClick={handleCompleteStop} disabled={isCompletingStop}>
+            <Button onClick={handleCompleteStop} disabled={isCompletingStop || (activeStop ? isStopCompleted(activeStop) : true)}>
               {isCompletingStop ? 'Completando...' : 'Confirmar'}
             </Button>
           </DialogFooter>
