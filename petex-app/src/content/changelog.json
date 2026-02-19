@@ -1,5 +1,14 @@
 [
   {
+    "date": "2026-02-23",
+    "title": "Driver Detalle de ruta: fix de carga + completar parada",
+    "highlights": [
+      "Se corrigió la carga en /app/route/[id] validando ownership de la ruta del driver, ordenando paradas por position y resolviendo datos de entrega por delivery_id o tracking_code/meta usando address_text.",
+      "Se agregó el botón Completar parada con confirm dialog accesible (DialogTitle/DialogDescription), actualización optimista y rollback visual si ocurre un error.",
+      "Ahora el detalle actualiza contadores de completadas y marca la ruta como completed cuando todas las paradas quedan completadas."
+    ]
+  },
+  {
     "date": "2026-02-22",
     "title": "Normalización de direcciones y rollback seguro en bulk routes",
     "highlights": [
