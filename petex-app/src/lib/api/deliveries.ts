@@ -202,7 +202,7 @@ function mapDelivery(row: unknown): Delivery {
   return {
     id: getString(record, 'id'),
     tracking: getString(record, 'tracking', getString(record, 'external_ref')),
-    addressRaw: getString(record, 'addressRaw', getString(record, 'address')),
+    addressRaw: getString(record, 'addressRaw', getString(record, 'address_text')),
     addressNorm: getNullableString(record, 'addressNorm') ?? getNullableString(record, 'address_norm'),
     lat,
     lng,

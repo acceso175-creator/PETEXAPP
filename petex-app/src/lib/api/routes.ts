@@ -39,6 +39,7 @@ export async function getRoute(id: string): Promise<Route> {
 }
 
 export async function listRouteStops(routeId: string): Promise<RouteStop[]> {
+  // Migración de estado de parada: usar completed_at/completed_by como fuente de verdad (evitar columna legacy completed).
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('route_stops')

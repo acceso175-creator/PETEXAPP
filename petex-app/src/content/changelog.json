@@ -1,5 +1,79 @@
 [
   {
+    "date": "2026-03-01",
+    "title": "Fix Mi Ruta con RPC activa + notas rápidas en Supabase",
+    "highlights": [
+      "Se creó/actualizó la RPC get_driver_current_route para devolver la ruta activa del driver autenticado y evitar el error PGRST202.",
+      "Se creó public.task_messages con RLS por usuario (select/insert/delete propios) para eliminar 404 en notas rápidas y operar contra tabla real.",
+      "Al completar una parada la ruta solo pasa a completed cuando todas las paradas están completas; si no, se mantiene active para que no desaparezca de Mi Ruta."
+    ]
+  },
+  {
+    "date": "2026-02-28",
+    "title": "Ruta actual por estado activo + estabilidad post-medianoche",
+    "highlights": [
+      "Se agregó RPC get_driver_current_route para obtener la ruta activa más reciente por status (assigned/active/in_progress), evitando depender de route_date = hoy del cliente.",
+      "Completar parada mantiene la ruta visible: guarda completed_at/completed_by y solo marca routes.completed cuando todas las paradas están completas; si no, queda in_progress.",
+      "Notas rápidas se movió a almacenamiento local/mock sin consultas a task_messages, eliminando 404/ruido en consola por tabla inexistente."
+    ]
+  },
+  {
+    "date": "2026-02-27",
+    "title": "Driver Route Detail: completed_at/completed_by sin columna completed",
+    "highlights": [
+      "Fix query completed->completed_at: detalle de ruta dejó de pedir route_stops.completed y usa completed_at/completed_by.",
+      "Completar parada ahora guarda completed_at y completed_by, sin usar status/completed en route_stops.",
+      "La UI deriva estado Pendiente/Completada y contadores desde completed_at; notas rápidas mantiene fallback silencioso para evitar 404 de task_messages."
+    ]
+  },
+  {
+    "date": "2026-02-26",
+    "title": "Route Detail estable con completed_at + notas rápidas sin 404",
+    "highlights": [
+      "Fix: route stops ahora usan completed_at como estado fuente (sin pedir route_stops.status en queries).",
+      "Fix: completar parada actualiza completed_at (y completed si existe) para reflejar Completada en UI.",
+      "Chore/Fix: notas rápidas deja de spamear 404 de task_messages; si la tabla no existe cae a mock/local sin ruido recurrente en red/consola."
+    ]
+  },
+  {
+    "date": "2026-02-25",
+    "title": "Fix completar parada + RLS ownership para detalle de ruta",
+    "highlights": [
+      "Fix RLS ownership: policies y helper usan profiles.id = auth.uid() (sin profiles.user_id).",
+      "Driver can open route detail: route_stops se consulta por route_id con ownership por routes.driver_profile_id.",
+      "Add stop completion fields + schema refresh: se agregan completed_at/completed en route_stops y NOTIFY pgrst para recargar schema cache.",
+      "UI de Driver: completar parada actualiza completed_at/completed, deshabilita el botón cuando ya está completada y muestra mensaje claro si falta columna en cache."
+    ]
+  },
+  {
+    "date": "2026-02-24",
+    "title": "Fix RLS ownership y ruta detalle para driver",
+    "highlights": [
+      "Fix RLS ownership: ahora las policies validan perfiles con profiles.id = auth.uid() (sin usar profiles.user_id).",
+      "Driver can open route detail: se ajustó el acceso a routes/route_stops/deliveries por ownership de routes.driver_profile_id.",
+      "Policies admin/driver: admin mantiene acceso total y driver solo lectura/actualización de su operación.",
+      "Add stop completion fields + UI hook: route_stops.status/completed_at y routes.completed_at quedan listos para completar parada sin romper el flujo actual."
+    ]
+  },
+  {
+    "date": "2026-02-23",
+    "title": "Driver Detalle de ruta: fix de carga + completar parada",
+    "highlights": [
+      "Se corrigió la carga en /app/route/[id] validando ownership de la ruta del driver, ordenando paradas por position y resolviendo datos de entrega por delivery_id o tracking_code/meta usando address_text.",
+      "Se agregó el botón Completar parada con confirm dialog accesible (DialogTitle/DialogDescription), actualización optimista y rollback visual si ocurre un error.",
+      "Ahora el detalle actualiza contadores de completadas y marca la ruta como completed cuando todas las paradas quedan completadas."
+    ]
+  },
+  {
+    "date": "2026-02-22",
+    "title": "Normalización de direcciones y rollback seguro en bulk routes",
+    "highlights": [
+      "UI ahora usa address_text y dejó de pedir address en queries/renders de rutas y paradas.",
+      "Bulk routes ahora revierte rutas si falla la inserción de deliveries o route_stops; ya no deja rutas huérfanas.",
+      "routes_created ahora solo cuenta rutas con stops insertados y deliveries_imported refleja paradas válidas realmente creadas."
+    ]
+  },
+  {
     "date": "2026-02-21",
     "title": "UX mejorada en Ruteo masivo por CSV",
     "highlights": [
